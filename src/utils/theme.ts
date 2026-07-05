@@ -1,29 +1,36 @@
 import { MD3LightTheme, MD3DarkTheme } from 'react-native-paper';
 import { create } from 'twrnc';
 
-// Custom tailwind configuration matching modern Apple color schemes
+// Custom tailwind configuration matching modern premium dark schemes
 export const tw = create({
   theme: {
     extend: {
       colors: {
-        iosBgLight: '#F5F5F7',
-        iosBgDark: '#0A0A0C',
-        iosCardLight: '#FFFFFF',
-        iosCardDark: '#161618',
-        iosTextLight: '#1C1C1E',
-        iosTextDark: '#F5F5F7',
-        iosSubtextLight: '#8E8E93',
-        iosSubtextDark: '#9A9A9F',
-        iosBorderLight: '#E5E5EA',
-        iosBorderDark: '#2C2C2E',
+        iosBgLight: '#0D0F17',
+        iosBgDark: '#0D0F17',
+        iosCardLight: '#1A1C28',
+        iosCardDark: '#1A1C28',
+        iosTextLight: '#FFFFFF',
+        iosTextDark: '#FFFFFF',
+        iosSubtextLight: '#D3D4E0',
+        iosSubtextDark: '#D3D4E0',
+        iosBorderLight: 'rgba(255, 255, 255, 0.05)',
+        iosBorderDark: 'rgba(255, 255, 255, 0.05)',
         
         // Premium Apple accents
         coral: '#FF453A', 
         emerald: '#34C759', 
-        indigo: '#5E5CE6', 
+        indigo: '#7A5CFF', 
         sky: '#0A84FF', 
         amber: '#FFD60A', 
-        purple: '#BF5AF2', 
+        purple: '#7A5CFF', 
+
+        // V2 Purple Theme Accents
+        primaryPurple: '#7A5CFF',
+        secondaryPurple: '#906EFF',
+        lightPurple: '#B497FF',
+        accentPurple: '#7B5CFF',
+        accentIndigo: '#6945FF',
       },
     },
   },
@@ -32,17 +39,17 @@ export const tw = create({
 // React Native Paper theme overrides for Material Design 3 matching our premium design system
 export const paperLightTheme = {
   ...MD3LightTheme,
-  dark: false,
+  dark: true,
   colors: {
     ...MD3LightTheme.colors,
-    primary: '#5E5CE6', // Calming Indigo
+    primary: '#7A5CFF', // Premium V2 Purple
     secondary: '#0A84FF', // Apple Sky Blue
-    background: '#F5F5F7', // iOS Light Background
-    surface: '#FFFFFF', // iOS Light Card
-    surfaceVariant: '#E5E5EA', // iOS Border/Input Light
-    onSurface: '#1C1C1E',
-    onSurfaceVariant: '#8E8E93',
-    outline: '#E5E5EA',
+    background: '#0D0F17', // iOS Dark Background
+    surface: '#1A1C28', // iOS Dark Card
+    surfaceVariant: 'rgba(255, 255, 255, 0.05)', // iOS Border/Input Dark
+    onSurface: '#FFFFFF',
+    onSurfaceVariant: '#D3D4E0',
+    outline: 'rgba(255, 255, 255, 0.05)',
     error: '#FF453A',
   },
 };
@@ -52,14 +59,14 @@ export const paperDarkTheme = {
   dark: true,
   colors: {
     ...MD3DarkTheme.colors,
-    primary: '#5E5CE6', // Calming Indigo
+    primary: '#7A5CFF', // Premium V2 Purple
     secondary: '#0A84FF', // Apple Sky Blue
-    background: '#0A0A0C', // iOS Dark Background
-    surface: '#161618', // iOS Dark Card
-    surfaceVariant: '#2C2C2E', // iOS Border/Input Dark
-    onSurface: '#F5F5F7',
-    onSurfaceVariant: '#9A9A9F',
-    outline: '#2C2C2E',
+    background: '#0D0F17', // iOS Dark Background
+    surface: '#1A1C28', // iOS Dark Card
+    surfaceVariant: 'rgba(255, 255, 255, 0.05)', // iOS Border/Input Dark
+    onSurface: '#FFFFFF',
+    onSurfaceVariant: '#D3D4E0',
+    outline: 'rgba(255, 255, 255, 0.05)',
     error: '#FF453A',
   },
 };

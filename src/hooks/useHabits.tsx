@@ -55,6 +55,8 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     notificationTime: '09:00',
     notificationMessage: "Don't forget today's habits 🌱",
     userName: user?.firstName || 'Kushal',
+    soundEnabled: true,
+    hapticEnabled: true,
   });
   const [todayStr, setTodayStr] = useState<string>(getTodayString());
   const [loading, setLoading] = useState<boolean>(true);

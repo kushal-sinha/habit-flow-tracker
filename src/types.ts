@@ -28,6 +28,8 @@ export interface UserSettings {
   notificationTime: string; // "HH:MM" format
   notificationMessage: string;
   userName: string;
+  soundEnabled: boolean;
+  hapticEnabled: boolean;
 }
 
 export interface Quote {

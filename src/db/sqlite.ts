@@ -53,9 +53,19 @@ export async function initDatabase(): Promise<void> {
       notificationsEnabled INTEGER DEFAULT 0,
       notificationTime TEXT DEFAULT '09:00',
       notificationMessage TEXT DEFAULT 'Don''t forget today''s habits 🌱',
-      userName TEXT DEFAULT 'User'
+      userName TEXT DEFAULT 'User',
+      soundEnabled INTEGER DEFAULT 1,
+      hapticEnabled INTEGER DEFAULT 1
     );
   `);
+
+  // Run settings column migrations
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN soundEnabled INTEGER DEFAULT 1;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN hapticEnabled INTEGER DEFAULT 1;');
+  } catch {}
 
   // Create indexes for performance on larger datasets
   await db.execAsync(`
@@ -181,6 +191,8 @@ export async function dbGetUserSettings(userId: string, defaultName: string = 'K
       notificationTime: '09:00',
       notificationMessage: "Don't forget today's habits 🌱",
       userName: defaultName,
+      soundEnabled: true,
+      hapticEnabled: true,
     };
     await dbSaveUserSettings(defaultSettings);
     return defaultSettings;
@@ -193,16 +205,21 @@ export async function dbGetUserSettings(userId: string, defaultName: string = 'K
     notificationTime: row.notificationTime,
     notificationMessage: row.notificationMessage,
     userName: row.userName,
+    soundEnabled: row.soundEnabled !== 0,
+    hapticEnabled: row.hapticEnabled !== 0,
   };
 }
 
 export async function dbSaveUserSettings(settings: UserSettings): Promise<void> {
   const db = getDB();
   const notifVal = settings.notificationsEnabled ? 1 : 0;
+  const soundVal = settings.soundEnabled ? 1 : 0;
+  const hapticVal = settings.hapticEnabled ? 1 : 0;
   
   await db.runAsync(
-    `INSERT OR REPLACE INTO user_settings (userId, theme, notificationsEnabled, notificationTime, notificationMessage, userName) 
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO user_settings (
+       userId, theme, notificationsEnabled, notificationTime, notificationMessage, userName, soundEnabled, hapticEnabled
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       settings.userId,
       settings.theme,
@@ -210,6 +227,8 @@ export async function dbSaveUserSettings(settings: UserSettings): Promise<void> 
       settings.notificationTime,
       settings.notificationMessage,
       settings.userName,
+      soundVal,
+      hapticVal,
     ]
   );
 }
