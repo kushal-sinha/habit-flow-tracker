@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: transparent;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <script>
+    let scene, camera, renderer, mixer, clock, model;
+
+    function postMessageSafe(payload) {
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      } else {
+        setTimeout(() => postMessageSafe(payload), 100);
+      }
+    }
+
+    window.onerror = function(message, source, lineno) {
+      postMessageSafe({
+        type: 'WEBVIEW_ERROR',
+        message: message,
+        source: source,
+        lineno: lineno
+      });
+    };
+
+    const oldError = console.error;
+    console.error = function() {
+      oldError.apply(console, arguments);
+      postMessageSafe({
+        type: 'CONSOLE_ERROR',
+        data: Array.from(arguments).map(arg => {
+          try {
+            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+          } catch(e) {
+            return String(arg);
+          }
+        }).join(' ')
+      });
+    };
+
+    function init() {
+      if (typeof THREE === 'undefined') {
+        postMessageSafe({ type: 'LOAD_ERROR' });
+        return;
+      }
+
+      const container = document.getElementById('canvas-container');
+      clock = new THREE.Clock();
+
+      scene = new THREE.Scene();
+
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+      camera.position.set(0, 0.5, 3.8);
+
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
+      container.appendChild(renderer.domElement);
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const animationName = urlParams.get('animation') || 'idle';
+      const theme = urlParams.get('theme') || 'dark';
+      const modelUrl = urlParams.get('modelUrl') || './models/Meshy.glb';
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, theme === 'dark' ? 0.4 : 0.6);
+      scene.add(ambientLight);
+
+      const keyLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
+      keyLight.position.set(2, 4, 3);
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0xdbeafe, 0.5);
+      fillLight.position.set(-2, 2, 2);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0x8b5cf6, 1.5);
+      rimLight.position.set(0, 4, -4);
+      scene.add(rimLight);
+
+      const loader = new THREE.GLTFLoader();
+      loader.load(
+        modelUrl,
+        (gltf) => {
+          model = gltf.scene;
+          scene.add(model);
+          model.position.set(0, 0.1, 0);
+
+          mixer = new THREE.AnimationMixer(model);
+          const clips = gltf.animations;
+          if (clips && clips.length > 0) {
+            const clip = clips.find(c => c.name.toLowerCase().includes(animationName.toLowerCase())) || clips[0];
+            const action = mixer.clipAction(clip);
+            action.play();
+          }
+
+          postMessageSafe({ type: 'LOAD_SUCCESS' });
+        },
+        undefined,
+        (error) => {
+          console.error('Error loading GLB:', error);
+          postMessageSafe({ type: 'LOAD_ERROR' });
+        }
+      );
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('canvas-container');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    }
+
+    let angle = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+
+      angle += 0.005;
+      camera.position.x = Math.sin(angle) * 0.08;
+      camera.position.y = 0.1 + Math.cos(angle * 1.5) * 0.03;
+      camera.lookAt(new THREE.Vector3(0, 0.05, 0));
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
