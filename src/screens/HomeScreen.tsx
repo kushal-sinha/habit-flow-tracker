@@ -13,6 +13,8 @@ import { Habit } from '../types';
 import { HabitFormModal } from './HabitFormModal';
 import { MascotIllustration } from '../components/MascotIllustration';
 import { MascotCompanionCard } from '../components/MascotCompanionCard';
+import { StreakWarningDialog } from '../components/StreakWarningDialog';
+import { LevelTimeline } from '../components/LevelTimeline';
 
 // Custom Progress Ring using react-native-svg
 const ProgressRing: React.FC<{ percentage: number; size: number; strokeWidth: number }> = ({
@@ -86,6 +88,7 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 export const HomeScreen: React.FC = () => {
   const { 
+    loading,
     habits, 
     history, 
     todayStr, 
@@ -112,10 +115,37 @@ export const HomeScreen: React.FC = () => {
   const [greeting, setGreeting] = useState(getGreeting());
   const quote = getQuoteForToday(todayStr);
 
+  // Streak warning state
+  const [warningVisible, setWarningVisible] = useState(false);
+  const [warningShownToday, setWarningShownToday] = useState(false);
+
   // Refresh greeting occasionally
   useEffect(() => {
     setGreeting(getGreeting());
   }, [todayStr]);
+
+  // Check if streak is at risk of breaking today
+  useEffect(() => {
+    if (!loading && habits.length > 0 && overallStreak > 0 && !warningShownToday) {
+      const scheduledToday = habits.filter(
+        (h) => !h.isArchived && isHabitScheduled(h, todayStr)
+      );
+      
+      if (scheduledToday.length > 0) {
+        const completedTodayCount = scheduledToday.filter((h) => {
+          const entry = history.find((e) => e.habitId === h.id && e.date === todayStr);
+          return entry ? entry.completed : false;
+        }).length;
+        
+        const isRoutineIncomplete = completedTodayCount < scheduledToday.length;
+        
+        if (isRoutineIncomplete) {
+          setWarningVisible(true);
+          setWarningShownToday(true);
+        }
+      }
+    }
+  }, [loading, habits, history, overallStreak, todayStr, warningShownToday]);
 
   // Filter today's habits
   const todayHabits = habits.filter(
@@ -303,6 +333,9 @@ export const HomeScreen: React.FC = () => {
           </View>
         </Card>
 
+        {/* Level Progression Timeline */}
+        <LevelTimeline currentStreak={overallStreak} />
+
         {/* Today's Habits Header */}
         <View style={tw`flex-row justify-between items-center mb-3`}>
           <Text style={tw`text-lg font-bold text-iosTextLight dark:text-iosTextDark`}>
@@ -471,6 +504,13 @@ export const HomeScreen: React.FC = () => {
           onClose={() => setFormOpen(false)}
         />
       )}
+
+      {/* Streak Warning Overlay Modal */}
+      <StreakWarningDialog
+        visible={warningVisible}
+        streakCount={overallStreak}
+        onDismiss={() => setWarningVisible(false)}
+      />
     </View>
   );
 };

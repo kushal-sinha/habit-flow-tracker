@@ -5,16 +5,21 @@ import { tw } from '../utils/theme';
 import { Asset } from 'expo-asset';
 import { MascotIllustration } from './MascotIllustration';
 
+const modelMeshy = require('../../assets/models/Meshy.glb');
+const modelCrimson = require('../../assets/models/crimson.glb');
+
 interface CharacterSceneProps {
   animationName: string;
   milestoneLevel: number;
   theme: 'light' | 'dark';
+  modelType?: 'meshy' | 'crimson';
 }
 
 export const CharacterScene: React.FC<CharacterSceneProps> = ({
   animationName,
   milestoneLevel,
   theme,
+  modelType = 'meshy',
 }) => {
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -29,8 +34,9 @@ export const CharacterScene: React.FC<CharacterSceneProps> = ({
         const htmlAsset = Asset.fromModule(require('../../assets/character_scene.html'));
         await htmlAsset.downloadAsync();
         
-        // Resolve GLB model
-        const glbAsset = Asset.fromModule(require('../../assets/models/Meshy.glb'));
+        // Resolve GLB model dynamically based on prop
+        const modelModule = modelType === 'crimson' ? modelCrimson : modelMeshy;
+        const glbAsset = Asset.fromModule(modelModule);
         await glbAsset.downloadAsync();
         
         // Target URI with query parameters for animation, theme, and absolute model path
@@ -45,7 +51,7 @@ export const CharacterScene: React.FC<CharacterSceneProps> = ({
       }
     }
     resolveAsset();
-  }, [animationName, theme]);
+  }, [animationName, theme, modelType]);
 
   useEffect(() => {
     // Timeout backup: if loading takes longer than 2.8 seconds, fallback to 2D
