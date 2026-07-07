@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, ScrollView, TouchableOpacity, Platform, Animated, Easing, Dimensions } from 'react-native';
-import { Text, Card, Checkbox, IconButton, FAB, Surface, Portal, Provider, Menu, Button } from 'react-native-paper';
+import { View, ScrollView, TouchableOpacity, Platform, Animated, Dimensions, StyleSheet } from 'react-native';
+import { Text, Card, IconButton, Portal, Menu } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useHabits } from '../hooks/useHabits';
 import { useCelebration } from '../hooks/useCelebration';
 import { tw } from '../utils/theme';
-import { getGreeting, getTodayString } from '../utils/dateUtils';
-import { getQuoteForToday } from '../utils/quoteUtils';
+import { getTodayString } from '../utils/dateUtils';
 import { isHabitScheduled } from '../utils/streakUtils';
 import { Habit } from '../types';
 import { HabitFormModal } from './HabitFormModal';
@@ -15,139 +13,111 @@ import { MascotIllustration } from '../components/MascotIllustration';
 import { MascotCompanionCard } from '../components/MascotCompanionCard';
 import { StreakWarningDialog } from '../components/StreakWarningDialog';
 import { LevelTimeline } from '../components/LevelTimeline';
+import { LevelBadge } from '../components/LevelTimeline';
+import { CircularProgress } from '../components/CircularProgress';
+import { MILESTONES, MilestoneConfig } from '../utils/progressionUtils';
 
-// Custom Progress Ring using react-native-svg
-const ProgressRing: React.FC<{ percentage: number; size: number; strokeWidth: number }> = ({
-  percentage,
-  size,
-  strokeWidth,
-}) => {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
-  
-  // Animated value for smooth progress ring filling
-  const animatedOffset = useRef(new Animated.Value(circumference)).current;
+// Helper to determine active milestone info based on streak count
+const getActiveMilestone = (streak: number): MilestoneConfig => {
+  let active = MILESTONES[0];
+  for (let i = 0; i < MILESTONES.length; i++) {
+    if (streak >= MILESTONES[i].minDays) {
+      active = MILESTONES[i];
+    }
+  }
+  return active;
+};
+
+// ----------------------------------------------------
+// Custom CustomCheckbox Component
+// ----------------------------------------------------
+interface CustomCheckboxProps {
+  isChecked: boolean;
+  onPress: () => void;
+}
+
+const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ isChecked, onPress }) => {
+  const scaleAnim = useRef(new Animated.Value(isChecked ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.timing(animatedOffset, {
-      toValue: strokeDashoffset,
-      duration: 600,
-      easing: Easing.out(Easing.ease),
+    Animated.spring(scaleAnim, {
+      toValue: isChecked ? 1 : 0,
       useNativeDriver: true,
+      tension: 60,
+      friction: 5,
     }).start();
-  }, [percentage, strokeDashoffset]);
+  }, [isChecked]);
 
-  // Animated values in SVG need to be wrapped or manually evaluated.
-  // For standard React Native compatibility, we will compute standard animated props.
   return (
-    <View style={tw`items-center justify-center`}>
-      <Svg width={size} height={size}>
-        <Defs>
-          <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <Stop offset="0%" stopColor="#8D74FF" />
-            <Stop offset="100%" stopColor="#6C4DFF" />
-          </LinearGradient>
-        </Defs>
-        {/* Track circle */}
-        <Circle
-          stroke="rgba(255, 255, 255, 0.06)"
-          fill="transparent"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          strokeWidth={strokeWidth}
-        />
-        {/* Progress indicator circle */}
-        <AnimatedCircle
-          stroke="url(#grad)"
-          fill="transparent"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={animatedOffset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        />
-      </Svg>
-      {/* Percentage Center Text */}
-      <View style={tw`absolute items-center`}>
-        <Text style={tw`text-2xl font-black text-iosTextLight dark:text-iosTextDark`}>{Math.round(percentage)}%</Text>
-        <Text style={tw`text-xxs text-iosSubtextLight dark:text-iosSubtextDark uppercase tracking-wider`}>Done</Text>
+    <TouchableOpacity 
+      activeOpacity={0.8} 
+      onPress={onPress} 
+      style={tw`h-10 w-10 items-center justify-center`}
+    >
+      <View style={tw`h-7 w-7 rounded-full border-2 border-iosBorderLight dark:border-white/20 items-center justify-center bg-transparent`}>
+        <Animated.View style={[
+          tw`absolute h-7 w-7 rounded-full bg-[#6C4DFF] items-center justify-center`,
+          {
+            transform: [{ scale: scaleAnim }],
+            opacity: scaleAnim,
+          }
+        ]}>
+          <MaterialCommunityIcons name="check" size={16} color="white" />
+        </Animated.View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
-// Create animated SVG Circle component
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-
-
+// ----------------------------------------------------
+// Main HomeScreen Component
+// ----------------------------------------------------
 export const HomeScreen: React.FC = () => {
   const { 
     loading,
     habits, 
     history, 
     todayStr, 
+    overallStreak, 
     toggleHabit, 
-    getHabitStats, 
-    addHabit, 
-    editHabit, 
     deleteHabit, 
     archiveHabit,
-    overallStreak,
-    isTodayCompleted,
+    addHabit,
+    editHabit,
     settings
   } = useHabits();
+
   const { triggerCelebration } = useCelebration();
 
-  // Dialog and form controller states
+  // Dialog & Form states
   const [formOpen, setFormOpen] = useState(false);
-  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
-  
-  // Menu visibility maps
+  const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
   const [menuVisible, setMenuVisible] = useState<{ [key: string]: boolean }>({});
   
-  // Greeting state
-  const [greeting, setGreeting] = useState(getGreeting());
-  const quote = getQuoteForToday(todayStr);
-
   // Streak warning state
   const [warningVisible, setWarningVisible] = useState(false);
   const [warningShownToday, setWarningShownToday] = useState(false);
 
-  // Refresh greeting occasionally
-  useEffect(() => {
-    setGreeting(getGreeting());
-  }, [todayStr]);
+  // Animations driving variables
+  const circleProgressAnim = useRef(new Animated.Value(0)).current;
+  const horizontalProgressAnim = useRef(new Animated.Value(0)).current;
+  const todayProgressAnim = useRef(new Animated.Value(0)).current;
 
-  // Check if streak is at risk of breaking today
-  useEffect(() => {
-    if (!loading && habits.length > 0 && overallStreak > 0 && !warningShownToday) {
-      const scheduledToday = habits.filter(
-        (h) => !h.isArchived && isHabitScheduled(h, todayStr)
-      );
-      
-      if (scheduledToday.length > 0) {
-        const completedTodayCount = scheduledToday.filter((h) => {
-          const entry = history.find((e) => e.habitId === h.id && e.date === todayStr);
-          return entry ? entry.completed : false;
-        }).length;
-        
-        const isRoutineIncomplete = completedTodayCount < scheduledToday.length;
-        
-        if (isRoutineIncomplete) {
-          setWarningVisible(true);
-          setWarningShownToday(true);
-        }
-      }
-    }
-  }, [loading, habits, history, overallStreak, todayStr, warningShownToday]);
+  // Active level calculation
+  const milestone = getActiveMilestone(overallStreak);
+  
+  // Days calculations inside current level
+  let currentLevelDays = Math.max(0, overallStreak - milestone.minDays);
+  let targetLevelDays = milestone.maxDays - milestone.minDays;
+  if (milestone.level === 30) {
+    currentLevelDays = 120;
+    targetLevelDays = 120;
+  }
+  
+  const levelProgressFraction = targetLevelDays > 0 ? Math.min(1, currentLevelDays / targetLevelDays) : 1;
+  const levelProgressPercentage = Math.round(levelProgressFraction * 100);
 
-  // Filter today's habits
+  // Check today's habits
   const todayHabits = habits.filter(
     (h) => !h.isArchived && isHabitScheduled(h, todayStr)
   );
@@ -159,7 +129,50 @@ export const HomeScreen: React.FC = () => {
 
   const totalCount = todayHabits.length;
   const completedCount = completedToday.length;
-  const percentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const todayPercentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const isTodayCompleted = totalCount > 0 && completedCount === totalCount;
+
+  console.log('[DEBUG-PROGRESS] overallStreak:', overallStreak, 'levelPct:', levelProgressPercentage, 'todayPct:', todayPercentage, 'total:', totalCount, 'completed:', completedCount, 'historyLen:', history.length);
+
+  // Check if streak warning should trigger today
+  useEffect(() => {
+    if (!loading && habits.length > 0 && overallStreak > 0 && !warningShownToday) {
+      if (todayHabits.length > 0) {
+        const isRoutineIncomplete = completedCount < totalCount;
+        if (isRoutineIncomplete) {
+          setWarningVisible(true);
+          setWarningShownToday(true);
+        }
+      }
+    }
+  }, [loading, habits, history, overallStreak, todayStr, warningShownToday, completedCount, totalCount]);
+
+  // Spring drive level progress ring & bars
+  useEffect(() => {
+    // 1. Level circle progress ring
+    Animated.spring(circleProgressAnim, {
+      toValue: levelProgressFraction,
+      tension: 25,
+      friction: 7,
+      useNativeDriver: false,
+    }).start();
+
+    // 2. Level horizontal XP progress bar
+    Animated.spring(horizontalProgressAnim, {
+      toValue: levelProgressFraction,
+      tension: 25,
+      friction: 7,
+      useNativeDriver: false,
+    }).start();
+
+    // 3. Today's Mission habits completion progress bar
+    Animated.spring(todayProgressAnim, {
+      toValue: todayPercentage,
+      tension: 30,
+      friction: 7,
+      useNativeDriver: false,
+    }).start();
+  }, [overallStreak, levelProgressFraction, todayPercentage]);
 
   // Sorting: incomplete first, completed last
   const sortedHabits = [...todayHabits].sort((a, b) => {
@@ -169,7 +182,7 @@ export const HomeScreen: React.FC = () => {
     const compB = entryB ? entryB.completed : false;
     
     if (compA === compB) return 0;
-    return compA ? 1 : -1; // completed goes last
+    return compA ? 1 : -1;
   });
 
   const handleOpenMenu = (id: string) => {
@@ -182,335 +195,534 @@ export const HomeScreen: React.FC = () => {
 
   const handleEdit = (habit: Habit) => {
     handleCloseMenu(habit.id);
-    setEditingHabit(habit);
+    setSelectedHabit(habit);
     setFormOpen(true);
   };
 
   const handleDuplicate = async (habit: Habit) => {
     handleCloseMenu(habit.id);
-    
-    // Duplicate with unique name suffix
-    const duplicateData = {
+    await addHabit({
       title: `${habit.title} (Copy)`,
       emoji: habit.emoji,
       category: habit.category,
       color: habit.color,
       reminderTime: habit.reminderTime,
       repeatDays: habit.repeatDays,
-      startDate: getTodayString(),
+      startDate: habit.startDate,
       note: habit.note,
-    };
-
-    const res = await addHabit(duplicateData);
-    if (!res.success) {
-      alert(res.error || 'Failed to duplicate');
-    }
+    });
   };
 
-  const handleArchive = (id: string) => {
+  const handleArchive = async (id: string) => {
     handleCloseMenu(id);
-    archiveHabit(id, true);
+    await archiveHabit(id, true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     handleCloseMenu(id);
-    deleteHabit(id);
+    await deleteHabit(id);
   };
 
-  // Generate data for the 7 days of the current week (Mon - Sun)
-  const getWeeklyBarStats = () => {
-    const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 is Sun, 1 is Mon...
-    const mondayDiff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + mondayDiff);
-
-    const barHeights = [];
-    const activeHabits = habits.filter(h => !h.isArchived);
-
-    for (let i = 0; i < 7; i++) {
-      const currentDate = new Date(monday);
-      currentDate.setDate(monday.getDate() + i);
-      const dateStr = currentDate.toISOString().split('T')[0];
-
-      const scheduledOnDay = activeHabits.filter(h => isHabitScheduled(h, dateStr));
-      if (scheduledOnDay.length === 0) {
-        barHeights.push({ pct: 0, active: dateStr === todayStr });
-        continue;
-      }
-
-      const completedOnDay = scheduledOnDay.filter(h => {
-        const ent = history.find(e => e.habitId === h.id && e.date === dateStr);
-        return ent ? ent.completed : false;
-      }).length;
-
-      const pct = (completedOnDay / scheduledOnDay.length) * 100;
-      barHeights.push({ pct, active: dateStr === todayStr });
-    }
-    return barHeights;
-  };
+  // SVGR Ring Geometry calculations
+  const ringSize = 170;
+  const ringStroke = 9;
+  const ringRadius = (ringSize - ringStroke) / 2;
+  const ringCircumference = ringRadius * 2 * Math.PI;
 
   return (
-    <View style={tw`flex-1 bg-iosBgLight dark:bg-[#0B0B12]`}>
-      <ScrollView contentContainerStyle={tw`px-5 pt-8 pb-24`}>
-        {/* Greetings Section */}
-        <View style={tw`flex-row justify-between items-center mb-5`}>
-          <View style={tw`flex-1 mr-2`}>
-            <Text style={tw`text-2xl font-black tracking-tight text-iosTextLight dark:text-white`}>
-              {greeting.text}, {settings.userName} {greeting.emoji}
-            </Text>
-          </View>
-          <View style={tw`w-11 h-11 items-center justify-center bg-black/5 dark:bg-white/5 rounded-full overflow-hidden border border-iosBorderLight dark:border-iosBorderDark shadow-sm`}>
-            <MascotIllustration pose="avatar" width={44} height={44} />
+    <View style={tw`flex-1 bg-iosBgLight dark:bg-[#090A10]`}>
+        
+        {/* ====================================================
+            TOP HEADER BAR (Menu, Title, User Avatar)
+            ==================================================== */}
+        <View style={styles.headerBar}>
+          <IconButton 
+            icon="menu" 
+            size={24} 
+            iconColor="#FFFFFF" 
+            style={tw`m-0`}
+            onPress={() => {}}
+          />
+          <Text style={styles.headerTitle}>Mission</Text>
+          <View style={styles.avatarWrapper}>
+            <MascotIllustration pose="avatar" width={40} height={40} />
           </View>
         </View>
 
-        {/* Quotes Section */}
-        <Card style={tw`p-5 rounded-3xl bg-iosCardLight dark:bg-[#1A1B28] border border-iosBorderLight dark:border-iosBorderDark mb-6 shadow-sm`}>
-          <Text style={tw`text-base italic leading-relaxed text-iosTextLight dark:text-[#D5D5E5]`}>
-            "{quote.text}"
-          </Text>
-          {quote.author && (
-            <Text style={tw`text-xs text-iosSubtextLight dark:text-iosSubtextDark mt-3 text-right font-semibold`}>
-              — {quote.author}
-            </Text>
-          )}
-        </Card>
-
-        {/* Today's Progress Card (Full Width) */}
-        <Card style={tw`w-full p-5 rounded-[24px] bg-iosCardLight dark:bg-[#1B1C29] border border-iosBorderLight dark:border-iosBorderDark mb-4 shadow-sm`}>
-          <View style={tw`flex-row justify-between items-center`}>
-            <View style={tw`flex-1 pr-4 justify-between h-[110px]`}>
-              <View>
-                <Text style={tw`text-xs font-bold text-iosSubtextLight dark:text-iosSubtextDark uppercase tracking-wider`}>
-                  Today's Progress
-                </Text>
-                <Text style={tw`text-2xl font-black text-iosTextLight dark:text-white mt-1`}>
-                  {completedCount} / {totalCount} Habits
-                </Text>
-              </View>
-              {/* Weekly progress bar chart */}
-              <View style={tw`flex-row gap-1.5 items-end h-8 mt-2`}>
-                {getWeeklyBarStats().map((bar, idx) => {
-                  const heightVal = Math.max(4, Math.floor((bar.pct / 100) * 24));
-                  return (
-                    <View 
-                      key={idx} 
-                      style={[
-                        tw`w-2.5 rounded-full`, 
-                        { height: heightVal },
-                        bar.active 
-                          ? tw`bg-[#6C4DFF]` 
-                          : bar.pct === 100 
-                            ? tw`bg-[#6C4DFF]/60` 
-                            : tw`bg-black/10 dark:bg-white/10`
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-            </View>
-            <ProgressRing percentage={percentage} size={110} strokeWidth={10} />
-          </View>
-        </Card>
-
-        {/* Current Streak Card (Full Width) */}
-        <Card style={tw`w-full p-4 rounded-[24px] bg-iosCardLight dark:bg-[#1A1B28] border border-iosBorderLight dark:border-iosBorderDark mb-6 shadow-sm`}>
-          <View style={tw`flex-row items-center gap-4`}>
-            <View style={tw`w-12 h-12 rounded-[18px] bg-amber/10 items-center justify-center`}>
-              <Text style={tw`text-2xl`}>🔥</Text>
-            </View>
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-base font-extrabold text-iosTextLight dark:text-white`}>
-                {overallStreak} Day Streak
-              </Text>
-              <Text style={tw`text-xs text-iosSubtextLight dark:text-iosSubtextDark mt-0.5`}>
-                {isTodayCompleted 
-                  ? "Today completed. Streak safe! 🎉"
-                  : "Complete today's habits to keep your streak alive!"}
-              </Text>
-            </View>
-          </View>
-        </Card>
-
-        {/* Level Progression Timeline */}
-        <LevelTimeline currentStreak={overallStreak} />
-
-        {/* Today's Habits Header */}
-        <View style={tw`flex-row justify-between items-center mb-3`}>
-          <Text style={tw`text-lg font-bold text-iosTextLight dark:text-iosTextDark`}>
-            Today's Habits
-          </Text>
-          {totalCount === 0 && (
-            <Text style={tw`text-xs text-iosSubtextLight dark:text-iosSubtextDark`}>
-              No habits scheduled
-            </Text>
-          )}
-        </View>
-
-        {/* Mascot Companion Card Widget */}
-        <MascotCompanionCard userName={settings.userName} />
-
-        {/* Habits Checklist */}
-        {sortedHabits.map((habit) => {
-          const entry = history.find((e) => e.habitId === habit.id && e.date === todayStr);
-          const isCompleted = entry ? entry.completed : false;
-          const stats = getHabitStats(habit);
-
-          return (
-            <View
-              key={habit.id}
-              style={[
-                tw`mb-4 h-[78px] rounded-[18px] bg-iosCardLight dark:bg-[#1A1B28] border flex-row items-center px-4 shadow-sm justify-between`,
-                isCompleted 
-                  ? tw`border-[#6C4DFF]/30 dark:border-[#6C4DFF]/20` 
-                  : tw`border-iosBorderLight dark:border-iosBorderDark`
-              ]}
+        <ScrollView contentContainerStyle={tw`px-5 pb-28 pt-2`}>
+          
+          {/* ====================================================
+              CIRCULAR PROGRESS RING & LEVEL BADGE SECTION
+              ==================================================== */}
+          <View style={styles.progressRingSection}>
+            <CircularProgress
+              progress={levelProgressPercentage}
+              size={ringSize}
+              strokeWidth={ringStroke}
+              gradientColors={['#D946EF', '#7A5CFF']}
+              showPercentage={false}
+              showHandle={true}
             >
-              {/* Left Side: Completion Checkbox & Details */}
-              <View style={tw`flex-1 flex-row items-center`}>
-                <TouchableOpacity
-                  onPress={async () => {
-                    const nextState = !isCompleted;
-                    await toggleHabit(habit.id, todayStr);
-                    
-                    if (nextState) {
-                      const totalScheduled = sortedHabits.length;
-                      const nextCompletedCount = sortedHabits.filter(h => {
-                        if (h.id === habit.id) return true;
-                        const ent = history.find(e => e.habitId === h.id && e.date === todayStr);
-                        return ent ? ent.completed : false;
-                      }).length;
-                      
-                      const todayAlreadyCompleted = sortedHabits.every(h => {
-                        if (h.id === habit.id) return false;
-                        const ent = history.find(e => e.habitId === h.id && e.date === todayStr);
-                        return ent ? ent.completed : false;
-                      });
-                      
-                      let nextStreak = overallStreak;
-                      if (nextCompletedCount === totalScheduled && !todayAlreadyCompleted) {
-                        nextStreak = overallStreak + 1;
-                      }
-                      
-                      triggerCelebration(
-                        habit.title,
-                        nextStreak === 0 ? 1 : nextStreak,
-                        totalScheduled,
-                        nextCompletedCount
-                      );
-                    }
-                  }}
-                  style={tw`mr-3 h-11 w-11 items-center justify-center`}
-                >
-                  {isCompleted ? (
-                    <View style={tw`h-8 w-8 rounded-full bg-[#6C4DFF] items-center justify-center`}>
-                      <MaterialCommunityIcons name="check" size={18} color="white" />
-                    </View>
-                  ) : (
-                    <View style={tw`h-8 w-8 rounded-full border-2 border-iosBorderLight dark:border-white/40 bg-transparent`} />
-                  )}
-                </TouchableOpacity>
-
-                {/* Habit details */}
-                <View style={tw`flex-1 pr-2`}>
-                  <View style={tw`flex-row items-center`}>
-                    <Text style={tw`text-lg mr-2`}>{habit.emoji}</Text>
-                    <Text
-                      style={[
-                        tw`text-base font-bold text-iosTextLight dark:text-iosTextDark`,
-                        isCompleted && tw`line-through text-iosSubtextLight dark:text-iosSubtextDark`
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {habit.title}
-                    </Text>
-                  </View>
-                  
-                  {habit.note ? (
-                    <Text 
-                      style={tw`text-xs text-iosSubtextLight dark:text-iosSubtextDark mt-0.5`}
-                      numberOfLines={1}
-                    >
-                      {habit.note}
-                    </Text>
-                  ) : null}
+              {/* Inner Circle Content Overlaid */}
+              <View style={styles.ringInnerContent}>
+                <Text style={styles.levelSmallLabel}>LEVEL {milestone.level}</Text>
+                
+                <View style={styles.ringBadgeWrapper}>
+                  <LevelBadge 
+                    level={milestone.level} 
+                    badgeType={milestone.badgeType} 
+                    isActive={true} 
+                  />
                 </View>
-              </View>
 
-              {/* Right Side: Streak Badge & Options Menu */}
-              <View style={tw`flex-row items-center`}>
-                <View style={tw`flex-row items-center bg-coral/10 dark:bg-coral/20 px-2.5 py-0.5 rounded-full mr-1`}>
-                  <Text style={tw`text-xs`}>🔥</Text>
-                  <Text style={tw`text-xs font-bold text-coral ml-0.5`}>
-                    {stats.currentStreak}
+                <Text style={styles.rankSmallLabel}>{milestone.rank}</Text>
+              </View>
+            </CircularProgress>
+
+            {/* Days Progress Text */}
+            <Text style={styles.daysProgressText}>
+              {currentLevelDays} / {targetLevelDays} DAYS
+            </Text>
+
+            {/* Inset XP horizontal progress fill */}
+            <View style={styles.horizontalTrackBar}>
+              <Animated.View 
+                style={[
+                  styles.horizontalProgressBarFill,
+                  {
+                    width: horizontalProgressAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0%', '100%'],
+                      extrapolate: 'clamp'
+                    })
+                  }
+                ]}
+              />
+            </View>
+          </View>
+
+          {/* ====================================================
+              TODAY'S MISSION PROGRESS BAR
+              ==================================================== */}
+          <View style={tw`w-full mb-6`}>
+            <View style={tw`flex-row justify-between items-end mb-2`}>
+              <Text style={styles.sectionTitle}>Today's Mission</Text>
+              <Text style={styles.percentageLabel}>{Math.round(todayPercentage)}%</Text>
+            </View>
+            
+            <View style={styles.todayTrackBar}>
+              <Animated.View 
+                style={[
+                  styles.todayProgressBarFill,
+                  {
+                    width: todayProgressAnim.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ['0%', '100%'],
+                      extrapolate: 'clamp'
+                    })
+                  }
+                ]}
+              />
+            </View>
+          </View>
+
+          {/* ====================================================
+              HABIT CHECKLIST LIST CARDS
+              ==================================================== */}
+          {sortedHabits.length > 0 ? (
+            sortedHabits.map((habit) => {
+              const entry = history.find((e) => e.habitId === habit.id && e.date === todayStr);
+              const isCompleted = entry ? entry.completed : false;
+
+              return (
+                <View
+                  key={habit.id}
+                  style={[
+                    styles.habitCard,
+                    isCompleted && styles.habitCardCompleted
+                  ]}
+                >
+                  <View style={tw`flex-1 flex-row items-center`}>
+                    
+                    {/* Left: Custom Tactile Scaling Checkbox */}
+                    <CustomCheckbox 
+                      isChecked={isCompleted}
+                      onPress={async () => {
+                        const nextState = !isCompleted;
+                        await toggleHabit(habit.id, todayStr);
+                        
+                        if (nextState) {
+                          const totalScheduled = todayHabits.length;
+                          const nextCompletedCount = todayHabits.filter(h => {
+                            if (h.id === habit.id) return true;
+                            const ent = history.find(e => e.habitId === h.id && e.date === todayStr);
+                            return ent ? ent.completed : false;
+                          }).length;
+                          
+                          if (nextCompletedCount === totalScheduled) {
+                            const todayAlreadyCompleted = todayHabits.every(h => {
+                              if (h.id === habit.id) return false;
+                              const ent = history.find(e => e.habitId === h.id && e.date === todayStr);
+                              return ent ? ent.completed : false;
+                            });
+                            
+                            let nextStreak = overallStreak;
+                            if (!todayAlreadyCompleted) {
+                              nextStreak = overallStreak + 1;
+                            }
+                            
+                            triggerCelebration(
+                              habit.title,
+                              nextStreak === 0 ? 1 : nextStreak,
+                              totalScheduled,
+                              nextCompletedCount
+                            );
+                          }
+                        }
+                      }}
+                    />
+
+                    {/* Middle: Habit title / subtitle note */}
+                    <View style={tw`flex-1 ml-2 pr-2`}>
+                      <View style={tw`flex-row items-center`}>
+                        <Text style={tw`text-lg mr-2`}>{habit.emoji}</Text>
+                        <Text
+                          style={[
+                            styles.habitTitle,
+                            isCompleted && styles.habitTitleCompleted
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {habit.title}
+                        </Text>
+                      </View>
+                      
+                      {habit.note ? (
+                        <Text 
+                          style={styles.habitNote}
+                          numberOfLines={1}
+                        >
+                          {habit.note}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {/* Right Side: Options dots menu */}
+                  <View style={tw`flex-row items-center`}>
+                    <Menu
+                      visible={!!menuVisible[habit.id]}
+                      onDismiss={() => handleCloseMenu(habit.id)}
+                      anchor={
+                        <IconButton
+                          icon="dots-vertical"
+                          size={20}
+                          iconColor="#6F7283"
+                          onPress={() => handleOpenMenu(habit.id)}
+                          style={tw`m-0`}
+                        />
+                      }
+                      contentStyle={tw`bg-[#161722] rounded-2xl border border-white/5`}
+                    >
+                      <Menu.Item onPress={() => handleEdit(habit)} leadingIcon="pencil" title="Edit" titleStyle={tw`text-white`} />
+                      <Menu.Item onPress={() => handleDuplicate(habit)} leadingIcon="content-copy" title="Duplicate" titleStyle={tw`text-white`} />
+                      <Menu.Item onPress={() => handleArchive(habit.id)} leadingIcon="archive" title="Archive" titleStyle={tw`text-white`} />
+                      <Menu.Item onPress={() => handleDelete(habit.id)} leadingIcon="delete" title="Delete" titleStyle={tw`text-coral font-bold`} />
+                    </Menu>
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <Card style={tw`p-6 rounded-[24px] bg-[#141522] border border-white/5 items-center`}>
+              <Text style={tw`text-lg font-bold text-white mb-1`}>No Habits Scheduled</Text>
+              <Text style={tw`text-xs text-white/50 text-center`}>
+                Tap the floating action button below to create your first habit routine for today!
+              </Text>
+            </Card>
+          )}
+
+          {/* ====================================================
+              COMPLETED STATE CELEBRATION BOX
+              ==================================================== */}
+          {isTodayCompleted && (
+            <Animated.View style={styles.completedGoalCard}>
+              <View style={tw`flex-row items-center gap-4 mb-4`}>
+                <View style={tw`w-12 h-12 rounded-2xl bg-[#7A5CFF]/10 items-center justify-center`}>
+                  <Text style={tw`text-2xl`}>🎉</Text>
+                </View>
+                <View style={tw`flex-1`}>
+                  <Text style={tw`text-lg font-black text-white`}>
+                    Today's Goal Completed!
+                  </Text>
+                  <Text style={tw`text-xs text-white/60 mt-0.5`}>
+                    Your streak is safe. Come back tomorrow.
                   </Text>
                 </View>
-
-                <Menu
-                  visible={!!menuVisible[habit.id]}
-                  onDismiss={() => handleCloseMenu(habit.id)}
-                  anchor={
-                    <IconButton
-                      icon="dots-vertical"
-                      size={20}
-                      iconColor={tw.color('iosSubtextLight')}
-                      onPress={() => handleOpenMenu(habit.id)}
-                      style={tw`m-0`}
-                    />
-                  }
-                  contentStyle={tw`bg-iosCardLight dark:bg-[#1A1B28] rounded-2xl border border-iosBorderLight dark:border-iosBorderDark`}
-                >
-                  <Menu.Item onPress={() => handleEdit(habit)} leadingIcon="pencil" title="Edit" titleStyle={tw`text-iosTextLight dark:text-iosTextDark`} />
-                  <Menu.Item onPress={() => handleDuplicate(habit)} leadingIcon="content-copy" title="Duplicate" titleStyle={tw`text-iosTextLight dark:text-iosTextDark`} />
-                  <Menu.Item onPress={() => handleArchive(habit.id)} leadingIcon="archive" title="Archive" titleStyle={tw`text-iosTextLight dark:text-iosTextDark`} />
-                  <Menu.Item onPress={() => handleDelete(habit.id)} leadingIcon="delete" title="Delete" titleStyle={tw`text-coral font-bold`} />
-                </Menu>
               </View>
-            </View>
-          );
-        })}
 
-        {/* Empty State Banner */}
-        {todayHabits.length === 0 && (
-          <View style={tw`items-center justify-center py-10 px-6`}>
-            <Text style={tw`text-4xl mb-4`}>🌱</Text>
-            <Text style={tw`text-base font-bold text-iosTextLight dark:text-iosTextDark text-center mb-1`}>
-              No Habits Scheduled For Today
-            </Text>
-            <Text style={tw`text-xs text-iosSubtextLight dark:text-iosSubtextDark text-center leading-relaxed px-4`}>
-              Tap the button below to add a habit or edit existing ones to fit today's routine.
-            </Text>
+              {/* mascot avatar companion animation display */}
+              <MascotCompanionCard userName={settings.userName} />
+            </Animated.View>
+          )}
+
+          {/* Complete Level Progression Timeline component at the bottom of dashboard */}
+          <View style={tw`mt-8`}>
+            <Text style={[styles.sectionTitle, tw`mb-3`]}>Streak Progress Tracker</Text>
+            <LevelTimeline currentStreak={overallStreak} />
           </View>
-        )}
-      </ScrollView>
+        </ScrollView>
 
-      {/* Floating Action Button for Habit Creation */}
-      <FAB
-        icon="plus"
-        color="#FFFFFF"
-        style={tw`absolute bottom-22 right-5 rounded-full bg-[#6C4DFF] shadow-lg`}
-        onPress={() => {
-          setEditingHabit(null);
-          setFormOpen(true);
-        }}
-      />
+        {/* Floating Action Button (FAB) to Add Routine Habits */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            setSelectedHabit(null);
+            setFormOpen(true);
+          }}
+          style={styles.floatingFab}
+        >
+          <MaterialCommunityIcons name="plus" size={26} color="white" />
+        </TouchableOpacity>
 
-      {/* Habit Create / Edit Modal Form */}
-      {formOpen && (
-        <HabitFormModal
-          visible={formOpen}
-          habit={editingHabit}
-          onClose={() => setFormOpen(false)}
+        {/* Form Modal drawer */}
+        <Portal>
+          {formOpen && (
+            <HabitFormModal
+              visible={formOpen}
+              habit={selectedHabit}
+              onClose={() => setFormOpen(false)}
+            />
+          )}
+        </Portal>
+
+        {/* Streak Warning Overlay Modal */}
+        <StreakWarningDialog
+          visible={warningVisible}
+          streakCount={overallStreak}
+          onDismiss={() => setWarningVisible(false)}
         />
-      )}
-
-      {/* Streak Warning Overlay Modal */}
-      <StreakWarningDialog
-        visible={warningVisible}
-        streakCount={overallStreak}
-        onDismiss={() => setWarningVisible(false)}
-      />
-    </View>
+      </View>
   );
 };
+
+const styles = StyleSheet.create({
+  // Header bar components
+  headerBar: {
+    height: Platform.OS === 'ios' ? 100 : 70,
+    width: '100%',
+    paddingTop: Platform.OS === 'ios' ? 44 : 10,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#090A10',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.03)',
+  },
+  headerTitle: {
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#E6E6FF',
+    letterSpacing: -0.5,
+  },
+  avatarWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Level progress circle styles
+  progressRingSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    marginBottom: 16,
+  },
+  svgRingContainer: {
+    width: 170,
+    height: 170,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringInnerContent: {
+    width: 140,
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelSmallLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  ringBadgeWrapper: {
+    width: 90,
+    height: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 2,
+    // Soft metallic back glow
+    shadowColor: '#7A5CFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
+  rankSmallLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  daysProgressText: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 20,
+    letterSpacing: -0.4,
+  },
+
+  // Horizontal XP progress bar
+  horizontalTrackBar: {
+    height: 5,
+    width: '55%',
+    backgroundColor: '#171822',
+    borderRadius: 2.5,
+    overflow: 'hidden',
+    marginTop: 10,
+  },
+  horizontalProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#7A5CFF',
+    borderRadius: 2.5,
+  },
+
+  // Today's Mission styles
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  percentageLabel: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#7A5CFF',
+  },
+  todayTrackBar: {
+    height: 8,
+    width: '100%',
+    backgroundColor: '#141522',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  todayProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#7A5CFF',
+    borderRadius: 4,
+  },
+
+  // Habit card styles
+  habitCard: {
+    height: 78,
+    width: '100%',
+    backgroundColor: '#12131F',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 10,
+    paddingRight: 16,
+    marginBottom: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      }
+    })
+  },
+  habitCardCompleted: {
+    borderColor: 'rgba(108,77,255,0.15)',
+    backgroundColor: 'rgba(18,19,31,0.7)',
+  },
+  habitTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  habitTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: 'rgba(255,255,255,0.3)',
+  },
+  habitNote: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 3,
+  },
+
+  // Goal Completed Card Styles
+  completedGoalCard: {
+    width: '100%',
+    borderRadius: 24,
+    backgroundColor: '#141522',
+    borderWidth: 1,
+    borderColor: 'rgba(122,92,255,0.2)',
+    padding: 16,
+    marginTop: 12,
+    marginBottom: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7A5CFF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      }
+    })
+  },
+
+  // Floating FAB styles
+  floatingFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#7A5CFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7A5CFF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 6,
+      }
+    })
+  },
+});

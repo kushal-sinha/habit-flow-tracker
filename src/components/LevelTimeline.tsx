@@ -45,7 +45,7 @@ interface LevelBadgeProps {
   isActive: boolean;
 }
 
-const LevelBadge: React.FC<LevelBadgeProps> = React.memo(({ level, badgeType, isActive }) => {
+export const LevelBadge: React.FC<LevelBadgeProps> = React.memo(({ level, badgeType, isActive }) => {
   // Bright metallic rim gradient stops
   let borderStops = { top: '#C8814E', bottom: '#7D4B22' };
   // Darker inner panel background gradient stops
