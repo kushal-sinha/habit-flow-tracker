@@ -4,6 +4,7 @@ import { Text, Avatar, TextInput, Button, SegmentedButtons, Switch, Surface, Por
 import { useClerk } from '@clerk/clerk-expo';
 import { useHabits } from '../hooks/useHabits';
 import { tw } from '../utils/theme';
+import { getCumulativeXPForLevel } from '../utils/XPEngine';
 
 interface ProfileScreenProps {
   onSignOut: () => void;
@@ -172,6 +173,70 @@ const ProfileScreenComponent: React.FC<ProfileScreenProps> = ({ onSignOut }) => 
             Account ID: {settings.userId}
           </Text>
         </Surface>
+
+        {/* Progression Card */}
+        {(() => {
+          const currentLevelBaseXP = getCumulativeXPForLevel(settings.level);
+          const nextLevelThreshold = getCumulativeXPForLevel(settings.level + 1);
+          const levelRequiredXP = nextLevelThreshold - currentLevelBaseXP;
+          const currentLevelXPProgress = settings.xp - currentLevelBaseXP;
+          const xpPercentage = Math.min(100, Math.max(0, Math.round((currentLevelXPProgress / levelRequiredXP) * 100)));
+          
+          return (
+            <Surface style={tw`p-5 rounded-3xl bg-iosCardLight dark:bg-iosCardDark border border-iosBorderLight dark:border-iosBorderDark mb-6 shadow-sm`}>
+              <View style={tw`flex-row justify-between items-center mb-3`}>
+                <Text style={tw`text-sm font-black text-iosTextLight dark:text-iosTextDark`}>
+                  PROGRESS PATHWAY
+                </Text>
+                <Text style={tw`text-sm font-black text-indigo`}>
+                  Level {settings.level}
+                </Text>
+              </View>
+              
+              <View style={[tw`h-2 bg-iosBorderLight dark:bg-iosBorderDark rounded-full overflow-hidden`]}>
+                <View style={[tw`h-full bg-indigo`, { width: `${xpPercentage}%` }]} />
+              </View>
+              
+              <View style={tw`flex-row justify-between mt-2`}>
+                <Text style={tw`text-[11px] text-iosSubtextLight dark:text-iosSubtextDark`}>
+                  {currentLevelXPProgress} / {levelRequiredXP} XP (Total: {settings.xp} XP)
+                </Text>
+                <Text style={tw`text-[11px] text-indigo font-bold`}>
+                  {xpPercentage}% to Level {settings.level + 1}
+                </Text>
+              </View>
+            </Surface>
+          );
+        })()}
+
+        {/* Badges Collection Card */}
+        {(() => {
+          const badgeList = settings.badges || [];
+          return (
+            <Surface style={tw`p-5 rounded-3xl bg-iosCardLight dark:bg-iosCardDark border border-iosBorderLight dark:border-iosBorderDark mb-6 shadow-sm`}>
+              <Text style={tw`text-sm font-black text-iosTextLight dark:text-iosTextDark mb-3`}>
+                COLLECTED BADGES ({badgeList.length})
+              </Text>
+              
+              {badgeList.length > 0 ? (
+                <View style={tw`flex-row flex-wrap gap-2.5`}>
+                  {badgeList.map((badge, idx) => (
+                    <View key={idx} style={tw`bg-indigo/10 px-3 py-1.5 rounded-full border border-indigo/25 flex-row items-center gap-1.5`}>
+                      <Text style={tw`text-xs`}>🏅</Text>
+                      <Text style={tw`text-xs font-bold text-indigo dark:text-indigo-300`}>
+                        {badge}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={tw`text-xs text-iosSubtextLight dark:text-iosSubtextDark italic`}>
+                  No badges unlocked yet. Complete achievements to unlock cosmetic badges!
+                </Text>
+              )}
+            </Surface>
+          );
+        })()}
 
         {/* Theme Settings Section */}
         <Text style={tw`text-sm font-bold text-iosSubtextLight dark:text-iosSubtextDark mb-2.5 uppercase tracking-wider`}>

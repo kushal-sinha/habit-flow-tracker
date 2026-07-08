@@ -9,6 +9,7 @@ import { HomeScreen } from './HomeScreen';
 import { CalendarScreen } from './CalendarScreen';
 import { StatsScreen } from './StatsScreen';
 import { ProfileScreen } from './ProfileScreen';
+import { AchievementsGalleryScreen } from './AchievementsGalleryScreen';
 import { triggerHaptic } from '../services/hapticService';
 
 interface MainLayoutProps {
@@ -16,8 +17,8 @@ interface MainLayoutProps {
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ onSignOut }) => {
-  const { loading } = useHabits();
-  const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'stats' | 'profile'>('home');
+  const { settings, loading } = useHabits();
+  const [activeTab, setActiveTab] = useState<'home' | 'calendar' | 'stats' | 'achievements' | 'profile'>('home');
 
   if (loading) {
     return (
@@ -34,6 +35,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ onSignOut }) => {
     { id: 'home' as const, activeIcon: 'checkbox-marked-circle', inactiveIcon: 'checkbox-marked-circle-outline' },
     { id: 'calendar' as const, activeIcon: 'calendar-month', inactiveIcon: 'calendar-month-outline' },
     { id: 'stats' as const, activeIcon: 'chart-bar', inactiveIcon: 'chart-bar-stacked' },
+    { id: 'achievements' as const, activeIcon: 'trophy', inactiveIcon: 'trophy-outline' },
     { id: 'profile' as const, activeIcon: 'account', inactiveIcon: 'account-outline' },
   ];
 
@@ -42,13 +44,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ onSignOut }) => {
       {/* Main Content Area */}
       <View style={tw`flex-1`}>
         <View style={{ flex: 1, display: activeTab === 'home' ? 'flex' : 'none' }}>
-          <HomeScreen onNavigateToStats={() => setActiveTab('stats')} />
+          <HomeScreen 
+            onNavigateToStats={() => setActiveTab('stats')} 
+            onNavigateToAchievements={() => setActiveTab('achievements')} 
+          />
         </View>
         <View style={{ flex: 1, display: activeTab === 'calendar' ? 'flex' : 'none' }}>
           <CalendarScreen />
         </View>
         <View style={{ flex: 1, display: activeTab === 'stats' ? 'flex' : 'none' }}>
           <StatsScreen />
+        </View>
+        <View style={{ flex: 1, display: activeTab === 'achievements' ? 'flex' : 'none' }}>
+          <AchievementsGalleryScreen settings={settings} />
         </View>
         <View style={{ flex: 1, display: activeTab === 'profile' ? 'flex' : 'none' }}>
           <ProfileScreen onSignOut={onSignOut} />

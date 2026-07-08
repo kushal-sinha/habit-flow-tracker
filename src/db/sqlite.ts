@@ -29,7 +29,8 @@ export async function initDatabase(): Promise<void> {
       note TEXT NOT NULL,
       isArchived INTEGER DEFAULT 0,
       createdAt TEXT NOT NULL,
-      userId TEXT NOT NULL
+      userId TEXT NOT NULL,
+      difficulty TEXT DEFAULT 'easy'
     );
   `);
 
@@ -60,7 +61,14 @@ export async function initDatabase(): Promise<void> {
       streakShields INTEGER DEFAULT 0,
       lastDailyResetDate TEXT DEFAULT NULL,
       showStreakLostScreen INTEGER DEFAULT 0,
-      streakShieldProtectedStreak INTEGER DEFAULT 0
+      streakShieldProtectedStreak INTEGER DEFAULT 0,
+      xp INTEGER DEFAULT 0,
+      level INTEGER DEFAULT 1,
+      unlockedCharacters TEXT DEFAULT '["seedling_village"]',
+      unlockedAchievements TEXT DEFAULT '[]',
+      lastWeeklyReviewDate TEXT DEFAULT NULL,
+      lastMonthlyReviewDate TEXT DEFAULT NULL,
+      badges TEXT DEFAULT '[]'
     );
   `);
 
@@ -85,6 +93,30 @@ export async function initDatabase(): Promise<void> {
   } catch {}
   try {
     await db.execAsync('ALTER TABLE user_settings ADD COLUMN streakShieldProtectedStreak INTEGER DEFAULT 0;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN xp INTEGER DEFAULT 0;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN level INTEGER DEFAULT 1;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN unlockedCharacters TEXT DEFAULT \'["seedling_village"]\';');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN unlockedAchievements TEXT DEFAULT \'[]\';');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN lastWeeklyReviewDate TEXT DEFAULT NULL;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN lastMonthlyReviewDate TEXT DEFAULT NULL;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE habits ADD COLUMN difficulty TEXT DEFAULT \'easy\';');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN badges TEXT DEFAULT \'[]\';');
   } catch {}
 
   // Create indexes for performance on larger datasets
@@ -115,6 +147,7 @@ export async function dbGetHabits(userId: string): Promise<Habit[]> {
     isArchived: row.isArchived === 1,
     createdAt: row.createdAt,
     userId: row.userId,
+    difficulty: row.difficulty ?? 'easy',
   }));
 }
 
@@ -125,8 +158,8 @@ export async function dbSaveHabit(habit: Habit): Promise<void> {
   
   await db.runAsync(
     `INSERT OR REPLACE INTO habits (
-      id, title, emoji, category, color, reminderTime, repeatDays, startDate, note, isArchived, createdAt, userId
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, title, emoji, category, color, reminderTime, repeatDays, startDate, note, isArchived, createdAt, userId, difficulty
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       habit.id,
       habit.title,
@@ -140,6 +173,7 @@ export async function dbSaveHabit(habit: Habit): Promise<void> {
       isArchivedVal,
       habit.createdAt,
       habit.userId,
+      habit.difficulty ?? 'easy',
     ]
   );
 }
@@ -202,7 +236,6 @@ export async function dbGetUserSettings(userId: string, defaultName: string = 'K
     'SELECT * FROM user_settings WHERE userId = ?',
     [userId]
   );
-  
   if (!row) {
     const defaultSettings: UserSettings = {
       userId,
@@ -218,6 +251,13 @@ export async function dbGetUserSettings(userId: string, defaultName: string = 'K
       lastDailyResetDate: null,
       showStreakLostScreen: false,
       streakShieldProtectedStreak: 0,
+      xp: 0,
+      level: 1,
+      unlockedCharacters: ['seedling_village'],
+      unlockedAchievements: [],
+      lastWeeklyReviewDate: null,
+      lastMonthlyReviewDate: null,
+      badges: [],
     };
     await dbSaveUserSettings(defaultSettings);
     return defaultSettings;
@@ -237,6 +277,13 @@ export async function dbGetUserSettings(userId: string, defaultName: string = 'K
     lastDailyResetDate: row.lastDailyResetDate ?? null,
     showStreakLostScreen: row.showStreakLostScreen === 1,
     streakShieldProtectedStreak: row.streakShieldProtectedStreak ?? 0,
+    xp: row.xp ?? 0,
+    level: row.level ?? 1,
+    unlockedCharacters: row.unlockedCharacters ? JSON.parse(row.unlockedCharacters) : ['seedling_village'],
+    unlockedAchievements: row.unlockedAchievements ? JSON.parse(row.unlockedAchievements) : [],
+    lastWeeklyReviewDate: row.lastWeeklyReviewDate ?? null,
+    lastMonthlyReviewDate: row.lastMonthlyReviewDate ?? null,
+    badges: row.badges ? JSON.parse(row.badges) : [],
   };
 }
 
@@ -246,13 +293,19 @@ export async function dbSaveUserSettings(settings: UserSettings): Promise<void> 
   const soundVal = settings.soundEnabled ? 1 : 0;
   const hapticVal = settings.hapticEnabled ? 1 : 0;
   const showLostVal = settings.showStreakLostScreen ? 1 : 0;
+  const charsVal = JSON.stringify(settings.unlockedCharacters || ['seedling_village']);
+  const achsVal = JSON.stringify(settings.unlockedAchievements || []);
+  
+  const badgesVal = JSON.stringify(settings.badges || []);
   
   await db.runAsync(
     `INSERT OR REPLACE INTO user_settings (
        userId, theme, notificationsEnabled, notificationTime, notificationMessage, 
        userName, soundEnabled, hapticEnabled, dailyResetTime, streakShields, 
-       lastDailyResetDate, showStreakLostScreen, streakShieldProtectedStreak
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       lastDailyResetDate, showStreakLostScreen, streakShieldProtectedStreak,
+       xp, level, unlockedCharacters, unlockedAchievements, lastWeeklyReviewDate, lastMonthlyReviewDate,
+       badges
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       settings.userId,
       settings.theme,
@@ -267,6 +320,13 @@ export async function dbSaveUserSettings(settings: UserSettings): Promise<void> 
       settings.lastDailyResetDate,
       showLostVal,
       settings.streakShieldProtectedStreak,
+      settings.xp,
+      settings.level,
+      charsVal,
+      achsVal,
+      settings.lastWeeklyReviewDate,
+      settings.lastMonthlyReviewDate,
+      badgesVal,
     ]
   );
 }

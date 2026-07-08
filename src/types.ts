@@ -11,6 +11,7 @@ export interface Habit {
   isArchived: boolean;
   createdAt: string;
   userId: string;
+  difficulty?: 'easy' | 'hard';
 }
 
 export interface HistoryEntry {
@@ -35,6 +36,13 @@ export interface UserSettings {
   lastDailyResetDate: string | null; // "YYYY-MM-DD"
   showStreakLostScreen: boolean;
   streakShieldProtectedStreak: number; // > 0 triggers shield protection modal
+  xp: number;
+  level: number;
+  unlockedCharacters: string[];
+  unlockedAchievements: string[];
+  lastWeeklyReviewDate: string | null;
+  lastMonthlyReviewDate: string | null;
+  badges?: string[];
 }
 
 export interface Quote {

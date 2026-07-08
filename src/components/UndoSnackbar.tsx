@@ -9,7 +9,7 @@ interface UndoSnackbarProps {
 }
 
 export const UndoSnackbar: React.FC<UndoSnackbarProps> = ({ visible, resetTime, onDismiss }) => {
-  const slideAnim = useRef(new Animated.Value(150)).current; // hidden by default below bottom edge
+  const slideAnim = useRef(new Animated.Value(350)).current; // hidden by default below bottom edge
   const timeoutRef = useRef<any>(null);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export const UndoSnackbar: React.FC<UndoSnackbarProps> = ({ visible, resetTime, 
     } else {
       // Slide DOWN (200ms timing)
       Animated.timing(slideAnim, {
-        toValue: 150,
+        toValue: 350,
         duration: 200,
         useNativeDriver: true,
       }).start();
@@ -93,7 +93,7 @@ export const UndoSnackbar: React.FC<UndoSnackbarProps> = ({ visible, resetTime, 
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 100, // Floats cleanly above the bottom tabs bar
+    bottom: 160, // Floats cleanly above the floating tab bar
     left: '5%',
     right: '5%',
     width: '90%',
@@ -103,6 +103,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 18,
+    zIndex: 999,
     ...Platform.select({
       ios: {
         shadowColor: '#000000',

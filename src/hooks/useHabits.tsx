@@ -20,6 +20,9 @@ import { isHabitScheduled, calculateHabitStats, calculateOverallStreak } from '.
 import { getLogicalResetDate } from '../utils/TimeWindowCalculator';
 import { evaluateDailyResets } from '../utils/DailyResetManager';
 import { scheduleReminders, triggerCompletionNotification } from '../services/ReminderScheduler';
+import { addXP, adjustXP } from '../utils/XPEngine';
+import { evaluateUnlockedAchievements, ACHIEVEMENTS } from '../utils/AchievementEngine';
+import { triggerHaptic } from '../services/hapticService';
 
 interface HabitsContextType {
   habits: Habit[];
@@ -66,6 +69,12 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     lastDailyResetDate: null,
     showStreakLostScreen: false,
     streakShieldProtectedStreak: 0,
+    xp: 0,
+    level: 1,
+    unlockedCharacters: ['seedling_village'],
+    unlockedAchievements: [],
+    lastWeeklyReviewDate: null,
+    lastMonthlyReviewDate: null,
   });
   const [todayStr, setTodayStr] = useState<string>(getTodayString());
   const [loading, setLoading] = useState<boolean>(true);
@@ -352,6 +361,8 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const toggleHabit = async (habitId: string, date: string) => {
+    if (!settings) return;
+
     // Determine the current state
     const entry = history.find(e => e.habitId === habitId && e.date === date);
     const currentlyCompleted = entry ? entry.completed : false;
@@ -375,20 +386,98 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Trigger dynamic scheduling
       await scheduleReminders(settings, habits, nextHistory);
       
-      // Trigger a local celebratory banner if goal is completed
+      // Calculate XP changes (rewards or reversals)
+      let xpChange = 0;
+      
       const activeHabits = habits.filter(h => !h.isArchived);
       const logicalToday = getLogicalResetDate(new Date(), settings.dailyResetTime);
       const todayScheduled = activeHabits.filter(h => isHabitScheduled(h, logicalToday));
-      
-      if (nextCompletedState && todayScheduled.length > 0) {
-        const todayCompletions = nextHistory.filter(e => e.date === logicalToday && e.completed && e.userId === userId);
-        const completedSet = new Set(todayCompletions.map(c => c.habitId));
-        const allDone = todayScheduled.every(h => completedSet.has(h.id));
-        if (allDone) {
+
+      // Find the habit difficulty
+      const currentHabit = habits.find(h => h.id === habitId);
+      const isHardHabit = currentHabit?.difficulty === 'hard';
+      const baseXP = isHardHabit ? 20 : 10;
+
+      // Calculate perfect day status before the toggle
+      let wasPerfectDay = false;
+      if (todayScheduled.length > 0) {
+        const pastCompletions = history.filter(e => e.date === logicalToday && e.completed && e.userId === userId);
+        const pastCompletedSet = new Set(pastCompletions.map(c => c.habitId));
+        wasPerfectDay = todayScheduled.every(h => pastCompletedSet.has(h.id));
+      }
+
+      // Calculate perfect day status after the toggle
+      let isPerfectDay = false;
+      if (todayScheduled.length > 0) {
+        const nextCompletions = nextHistory.filter(e => e.date === logicalToday && e.completed && e.userId === userId);
+        const nextCompletedSet = new Set(nextCompletions.map(c => c.habitId));
+        isPerfectDay = todayScheduled.every(h => nextCompletedSet.has(h.id));
+      }
+
+      if (nextCompletedState) {
+        xpChange += baseXP; // +10 or +20 XP per completion
+        if (isPerfectDay && !wasPerfectDay) {
+          xpChange += 30; // +30 XP Perfect Day bonus!
           await triggerCompletionNotification();
+        }
+      } else {
+        xpChange -= baseXP; // Deduct XP on uncheck
+        if (wasPerfectDay && !isPerfectDay) {
+          xpChange -= 30; // Deduct Perfect Day bonus if lost
         }
       }
 
+      let nextXP = settings.xp;
+      let nextLevel = settings.level;
+      let unlockedAchs = [...(settings.unlockedAchievements || [])];
+      let nextBadges = [...(settings.badges || [])];
+
+      if (xpChange !== 0) {
+        const xpRes = adjustXP(settings.xp, settings.level, xpChange);
+        nextXP = xpRes.nextXP;
+        nextLevel = xpRes.nextLevel;
+        if (xpRes.leveledUp && xpChange > 0) {
+          triggerHaptic('success');
+        }
+      }
+
+      // Check for new achievements
+      const calculatedAchs = evaluateUnlockedAchievements(
+        { ...settings, xp: nextXP, level: nextLevel, unlockedAchievements: unlockedAchs, badges: nextBadges },
+        habits,
+        nextHistory,
+        overallStreak
+      );
+
+      const newUnlocks = calculatedAchs.filter(id => !unlockedAchs.includes(id));
+      if (newUnlocks.length > 0) {
+        unlockedAchs = [...unlockedAchs, ...newUnlocks];
+        
+        // Add badges for newly unlocked achievements if they are badges!
+        newUnlocks.forEach(achId => {
+          const config = ACHIEVEMENTS.find(a => a.id === achId);
+          if (config && config.rewardType === 'badge') {
+            const badgeName = config.rewardText.replace(/^[^\s]+\s+/, '').replace(/\s+Badge$/, '');
+            if (!nextBadges.includes(badgeName)) {
+              nextBadges.push(badgeName);
+            }
+          }
+        });
+        
+        triggerHaptic('heavy');
+      }
+
+      const updatedSettings: UserSettings = {
+        ...settings,
+        xp: nextXP,
+        level: nextLevel,
+        unlockedAchievements: unlockedAchs,
+        badges: nextBadges,
+      };
+
+      await dbSaveUserSettings(updatedSettings);
+      setSettings(updatedSettings);
+      
       refreshData();
     } catch (err) {
       console.error('Error toggling habit: ', err);

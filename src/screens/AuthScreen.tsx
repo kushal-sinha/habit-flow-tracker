@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { TextInput, Button, Text, ActivityIndicator, Surface } from 'react-native-paper';
 import { useSignIn, useSignUp } from '@clerk/clerk-expo';
 import { tw } from '../utils/theme';
+import LottieView from 'lottie-react-native';
 
 interface AuthScreenProps {
   onContinueAsGuest: () => void;
@@ -22,6 +23,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onContinueAsGuest }) => 
   const [code, setCode] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [showRocket, setShowRocket] = useState(false);
 
   // Sign In action
   const onSignInPress = async () => {
@@ -41,6 +43,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onContinueAsGuest }) => 
       });
       
       if (completeSignIn.status === 'complete') {
+        setShowRocket(true);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
         await setSignInActive({ session: completeSignIn.createdSessionId });
       } else {
         console.warn('Sign in status incomplete:', completeSignIn);
@@ -98,6 +102,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onContinueAsGuest }) => 
       });
 
       if (completeSignUp.status === 'complete') {
+        setShowRocket(true);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
         await setSignUpActive({ session: completeSignUp.createdSessionId });
       } else {
         Alert.alert('Verification Failed', 'Verification status incomplete.');
@@ -107,6 +113,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onContinueAsGuest }) => 
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGuestMode = async () => {
+    setShowRocket(true);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    onContinueAsGuest();
   };
 
   return (
@@ -239,7 +251,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onContinueAsGuest }) => 
 
         {/* Offline Guest Mode Action */}
         <TouchableOpacity
-          onPress={onContinueAsGuest}
+          onPress={handleGuestMode}
           style={tw`mt-8 self-center py-3 px-6 rounded-2xl border border-iosBorderLight dark:border-iosBorderDark bg-iosCardLight dark:bg-iosCardDark items-center shadow-sm flex-row justify-center`}
         >
           <Text style={tw`text-iosSubtextLight dark:text-iosSubtextDark font-semibold mr-1.5`}>👤</Text>
@@ -248,6 +260,41 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onContinueAsGuest }) => 
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Fullscreen Rocket Launch Overlay */}
+      {showRocket && (
+        <View style={styles.rocketOverlay}>
+          <LottieView
+            source={require('../../assets/lottie/Rocket Launch.json')}
+            autoPlay
+            loop={false}
+            style={styles.rocketLottie}
+          />
+          <Text style={styles.rocketText}>Launching Your Companion... 🚀</Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 };
+
+const styles = StyleSheet.create({
+  rocketOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#0A0C14',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 99999,
+  },
+  rocketLottie: {
+    width: 320,
+    height: 320,
+  },
+  rocketText: {
+    marginTop: 24,
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+});

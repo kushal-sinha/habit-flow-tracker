@@ -21,6 +21,12 @@ describe('Streak Protection V2.1 Logic Engines', () => {
     lastDailyResetDate: '2026-07-07',
     showStreakLostScreen: false,
     streakShieldProtectedStreak: 0,
+    xp: 0,
+    level: 1,
+    unlockedCharacters: ['seedling_village'],
+    unlockedAchievements: [],
+    lastWeeklyReviewDate: null,
+    lastMonthlyReviewDate: null,
     ...overrides,
   });
 
