@@ -9,7 +9,7 @@ interface ProfileScreenProps {
   onSignOut: () => void;
 }
 
-export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onSignOut }) => {
+const ProfileScreenComponent: React.FC<ProfileScreenProps> = ({ onSignOut }) => {
   const { signOut } = useClerk();
   const { settings, updateSettings, backup, restore } = useHabits();
 
@@ -439,3 +439,5 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onSignOut }) => {
     </View>
   );
 };
+
+export const ProfileScreen = React.memo(ProfileScreenComponent);

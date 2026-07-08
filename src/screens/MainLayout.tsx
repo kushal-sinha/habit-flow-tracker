@@ -30,21 +30,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ onSignOut }) => {
     );
   }
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'home':
-        return <HomeScreen />;
-      case 'calendar':
-        return <CalendarScreen />;
-      case 'stats':
-        return <StatsScreen />;
-      case 'profile':
-        return <ProfileScreen onSignOut={onSignOut} />;
-      default:
-        return <HomeScreen />;
-    }
-  };
-
   const tabs = [
     { id: 'home' as const, activeIcon: 'checkbox-marked-circle', inactiveIcon: 'checkbox-marked-circle-outline' },
     { id: 'calendar' as const, activeIcon: 'calendar-month', inactiveIcon: 'calendar-month-outline' },
@@ -55,8 +40,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ onSignOut }) => {
   return (
     <View style={tw`flex-1 bg-iosBgLight dark:bg-[#0B0B12]`}>
       {/* Main Content Area */}
-      <View style={tw`flex-grow`}>
-        {renderContent()}
+      <View style={tw`flex-1`}>
+        <View style={{ flex: 1, display: activeTab === 'home' ? 'flex' : 'none' }}>
+          <HomeScreen />
+        </View>
+        <View style={{ flex: 1, display: activeTab === 'calendar' ? 'flex' : 'none' }}>
+          <CalendarScreen />
+        </View>
+        <View style={{ flex: 1, display: activeTab === 'stats' ? 'flex' : 'none' }}>
+          <StatsScreen />
+        </View>
+        <View style={{ flex: 1, display: activeTab === 'profile' ? 'flex' : 'none' }}>
+          <ProfileScreen onSignOut={onSignOut} />
+        </View>
       </View>
 
       {/* Floating Apple-Style Blurred Tab Bar */}

@@ -6,7 +6,7 @@ import { tw } from '../utils/theme';
 import { getTodayString, getLastNDays, getWeekdayAbbreviation, addDays } from '../utils/dateUtils';
 import { calculateHabitStats, isHabitScheduled } from '../utils/streakUtils';
 
-export const StatsScreen: React.FC = () => {
+const StatsScreenComponent: React.FC = () => {
   const { habits, history, todayStr } = useHabits();
   const activeHabits = habits.filter((h) => !h.isArchived);
 
@@ -266,3 +266,5 @@ export const StatsScreen: React.FC = () => {
     </View>
   );
 };
+
+export const StatsScreen = React.memo(StatsScreenComponent);

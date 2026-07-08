@@ -8,7 +8,7 @@ import { getCalendarGrid, parseDateString, WEEKDAYS, formatDateString, getTodayS
 import { isHabitScheduled } from '../utils/streakUtils';
 import { Habit } from '../types';
 
-export const CalendarScreen: React.FC = () => {
+const CalendarScreenComponent: React.FC = () => {
   const { habits, history, todayStr } = useHabits();
 
   // Current calendar view year and month
@@ -200,34 +200,40 @@ export const CalendarScreen: React.FC = () => {
 
           <ScrollView style={tw`max-h-80 mb-4`}>
             {scheduledOnSelectedDay.length > 0 ? (
-              scheduledOnSelectedDay.map(({ habit, isCompleted }) => (
-                <Card 
-                  key={habit.id}
-                  style={tw`mb-2.5 rounded-xl bg-iosCardLight dark:bg-iosCardDark border border-iosBorderLight dark:border-iosBorderDark shadow-sm`}
-                >
-                  <View style={tw`flex-row justify-between items-center py-2 px-3`}>
-                    <View style={tw`flex-row items-center flex-1 pr-2`}>
-                      <Text style={tw`text-lg mr-2`}>{habit.emoji}</Text>
-                      <Text style={tw`text-sm font-bold text-iosTextLight dark:text-iosTextDark`} numberOfLines={1}>
-                        {habit.title}
-                      </Text>
+              scheduledOnSelectedDay.map(({ habit, isCompleted }) => {
+                const themeColor = tw.color(habit.color) || '#7A5CFF';
+                return (
+                  <Card 
+                    key={habit.id}
+                    style={[
+                      tw`mb-2.5 rounded-xl bg-iosCardLight dark:bg-iosCardDark border border-iosBorderLight dark:border-iosBorderDark shadow-sm`,
+                      { borderLeftWidth: 4, borderLeftColor: themeColor }
+                    ]}
+                  >
+                    <View style={tw`flex-row justify-between items-center py-2 px-3`}>
+                      <View style={tw`flex-row items-center flex-1 pr-2`}>
+                        <Text style={tw`text-lg mr-2`}>{habit.emoji}</Text>
+                        <Text style={tw`text-sm font-bold text-iosTextLight dark:text-iosTextDark`} numberOfLines={1}>
+                          {habit.title}
+                        </Text>
+                      </View>
+                      <View style={tw`flex-row items-center`}>
+                        <MaterialCommunityIcons
+                          name={isCompleted ? 'checkbox-marked-circle' : 'close-circle-outline'}
+                          size={22}
+                          color={isCompleted ? themeColor : tw.color('coral')}
+                        />
+                        <Text style={[
+                          tw`text-xs font-bold ml-1`,
+                          { color: isCompleted ? themeColor : tw.color('coral') }
+                        ]}>
+                          {isCompleted ? 'Completed' : 'Skipped'}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={tw`flex-row items-center`}>
-                      <MaterialCommunityIcons
-                        name={isCompleted ? 'checkbox-marked-circle' : 'close-circle-outline'}
-                        size={22}
-                        color={isCompleted ? tw.color('emerald') : tw.color('coral')}
-                      />
-                      <Text style={[
-                        tw`text-xs font-bold ml-1`,
-                        isCompleted ? tw`text-emerald` : tw`text-coral`
-                      ]}>
-                        {isCompleted ? 'Completed' : 'Skipped'}
-                      </Text>
-                    </View>
-                  </View>
-                </Card>
-              ))
+                  </Card>
+                );
+              })
             ) : (
               <View style={tw`items-center justify-center py-6`}>
                 <Text style={tw`text-3xl mb-2`}>💤</Text>
@@ -250,3 +256,5 @@ export const CalendarScreen: React.FC = () => {
     </View>
   );
 };
+
+export const CalendarScreen = React.memo(CalendarScreenComponent);

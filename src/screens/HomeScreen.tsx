@@ -34,9 +34,10 @@ const getActiveMilestone = (streak: number): MilestoneConfig => {
 interface CustomCheckboxProps {
   isChecked: boolean;
   onPress: () => void;
+  color?: string;
 }
 
-const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ isChecked, onPress }) => {
+const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ isChecked, onPress, color }) => {
   const scaleAnim = useRef(new Animated.Value(isChecked ? 1 : 0)).current;
 
   useEffect(() => {
@@ -48,16 +49,22 @@ const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ isChecked, onPress }) =
     }).start();
   }, [isChecked]);
 
+  const activeColor = color || '#7A5CFF';
+
   return (
     <TouchableOpacity 
       activeOpacity={0.8} 
       onPress={onPress} 
       style={tw`h-10 w-10 items-center justify-center`}
     >
-      <View style={tw`h-7 w-7 rounded-full border-2 border-iosBorderLight dark:border-white/20 items-center justify-center bg-transparent`}>
+      <View style={[
+        tw`h-7 w-7 rounded-full border-2 items-center justify-center bg-transparent`,
+        { borderColor: isChecked ? activeColor : (color ? `${color}40` : 'rgba(255, 255, 255, 0.2)') }
+      ]}>
         <Animated.View style={[
-          tw`absolute h-7 w-7 rounded-full bg-[#6C4DFF] items-center justify-center`,
+          tw`absolute h-7 w-7 rounded-full items-center justify-center`,
           {
+            backgroundColor: activeColor,
             transform: [{ scale: scaleAnim }],
             opacity: scaleAnim,
           }
@@ -72,7 +79,7 @@ const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ isChecked, onPress }) =
 // ----------------------------------------------------
 // Main HomeScreen Component
 // ----------------------------------------------------
-export const HomeScreen: React.FC = () => {
+const HomeScreenComponent: React.FC = () => {
   const { 
     loading,
     habits, 
@@ -94,6 +101,25 @@ export const HomeScreen: React.FC = () => {
   const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
   const [menuVisible, setMenuVisible] = useState<{ [key: string]: boolean }>({});
   
+  // Optimistic completion tracking to ensure 60fps instant UI transitions
+  const [optimisticCompletions, setOptimisticCompletions] = useState<{ [habitId: string]: boolean }>({});
+
+  // Sync optimistic completions with database history context with a 600ms debounce delay
+  // to absorb database write and refresh latency, preventing progress resets or stutters.
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const completions: { [habitId: string]: boolean } = {};
+      const filteredToday = habits.filter((h) => !h.isArchived && isHabitScheduled(h, todayStr));
+      filteredToday.forEach((h) => {
+        const entry = history.find((e) => e.habitId === h.id && e.date === todayStr);
+        completions[h.id] = entry ? entry.completed : false;
+      });
+      setOptimisticCompletions(completions);
+    }, 600);
+
+    return () => clearTimeout(handler);
+  }, [history, todayStr, habits]);
+
   // Streak warning state
   const [warningVisible, setWarningVisible] = useState(false);
   const [warningShownToday, setWarningShownToday] = useState(false);
@@ -103,11 +129,34 @@ export const HomeScreen: React.FC = () => {
   const horizontalProgressAnim = useRef(new Animated.Value(0)).current;
   const todayProgressAnim = useRef(new Animated.Value(0)).current;
 
-  // Active level calculation
-  const milestone = getActiveMilestone(overallStreak);
+  // Check today's habits
+  const todayHabits = habits.filter(
+    (h) => !h.isArchived && isHabitScheduled(h, todayStr)
+  );
+
+  const completedToday = todayHabits.filter((h) => !!optimisticCompletions[h.id]);
+
+  const totalCount = todayHabits.length;
+  const completedCount = completedToday.length;
+  const todayPercentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const isTodayCompleted = totalCount > 0 && completedCount === totalCount;
+
+  // Determine if today was already completed before this action
+  const todayAlreadyCompletedBefore = todayHabits.length > 0 && todayHabits.every((h) => {
+    const entry = history.find((e) => e.habitId === h.id && e.date === todayStr);
+    return entry ? entry.completed : false;
+  });
+
+  // Calculate optimistic streak to trigger badge animations instantly
+  const optimisticStreak = (isTodayCompleted && !todayAlreadyCompletedBefore)
+    ? overallStreak + 1
+    : overallStreak;
+
+  // Active level calculation using optimistic streak
+  const milestone = getActiveMilestone(optimisticStreak);
   
   // Days calculations inside current level
-  let currentLevelDays = Math.max(0, overallStreak - milestone.minDays);
+  let currentLevelDays = Math.max(0, optimisticStreak - milestone.minDays);
   let targetLevelDays = milestone.maxDays - milestone.minDays;
   if (milestone.level === 30) {
     currentLevelDays = 120;
@@ -117,22 +166,7 @@ export const HomeScreen: React.FC = () => {
   const levelProgressFraction = targetLevelDays > 0 ? Math.min(1, currentLevelDays / targetLevelDays) : 1;
   const levelProgressPercentage = Math.round(levelProgressFraction * 100);
 
-  // Check today's habits
-  const todayHabits = habits.filter(
-    (h) => !h.isArchived && isHabitScheduled(h, todayStr)
-  );
-
-  const completedToday = todayHabits.filter((h) => {
-    const entry = history.find((e) => e.habitId === h.id && e.date === todayStr);
-    return entry ? entry.completed : false;
-  });
-
-  const totalCount = todayHabits.length;
-  const completedCount = completedToday.length;
-  const todayPercentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-  const isTodayCompleted = totalCount > 0 && completedCount === totalCount;
-
-  console.log('[DEBUG-PROGRESS] overallStreak:', overallStreak, 'levelPct:', levelProgressPercentage, 'todayPct:', todayPercentage, 'total:', totalCount, 'completed:', completedCount, 'historyLen:', history.length);
+  console.log('[DEBUG-PROGRESS] overallStreak:', overallStreak, 'optimisticStreak:', optimisticStreak, 'levelPct:', levelProgressPercentage, 'todayPct:', todayPercentage, 'total:', totalCount, 'completed:', completedCount, 'historyLen:', history.length);
 
   // Check if streak warning should trigger today
   useEffect(() => {
@@ -152,24 +186,24 @@ export const HomeScreen: React.FC = () => {
     // 1. Level circle progress ring
     Animated.spring(circleProgressAnim, {
       toValue: levelProgressFraction,
-      tension: 25,
-      friction: 7,
+      tension: 75,
+      friction: 11,
       useNativeDriver: false,
     }).start();
 
     // 2. Level horizontal XP progress bar
     Animated.spring(horizontalProgressAnim, {
       toValue: levelProgressFraction,
-      tension: 25,
-      friction: 7,
+      tension: 75,
+      friction: 11,
       useNativeDriver: false,
     }).start();
 
     // 3. Today's Mission habits completion progress bar
     Animated.spring(todayProgressAnim, {
       toValue: todayPercentage,
-      tension: 30,
-      friction: 7,
+      tension: 80,
+      friction: 12,
       useNativeDriver: false,
     }).start();
   }, [overallStreak, levelProgressFraction, todayPercentage]);
@@ -249,7 +283,7 @@ export const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={tw`px-5 pb-28 pt-2`}>
+        <ScrollView contentContainerStyle={tw`px-5 pb-36 pt-2`}>
           
           {/* ====================================================
               CIRCULAR PROGRESS RING & LEVEL BADGE SECTION
@@ -332,14 +366,16 @@ export const HomeScreen: React.FC = () => {
           {sortedHabits.length > 0 ? (
             sortedHabits.map((habit) => {
               const entry = history.find((e) => e.habitId === habit.id && e.date === todayStr);
-              const isCompleted = entry ? entry.completed : false;
+              const isCompleted = !!optimisticCompletions[habit.id];
+              const themeColor = tw.color(habit.color) || '#7A5CFF';
 
               return (
                 <View
                   key={habit.id}
                   style={[
                     styles.habitCard,
-                    isCompleted && styles.habitCardCompleted
+                    isCompleted && styles.habitCardCompleted,
+                    { borderLeftWidth: 4, borderLeftColor: themeColor }
                   ]}
                 >
                   <View style={tw`flex-1 flex-row items-center`}>
@@ -347,23 +383,27 @@ export const HomeScreen: React.FC = () => {
                     {/* Left: Custom Tactile Scaling Checkbox */}
                     <CustomCheckbox 
                       isChecked={isCompleted}
+                      color={themeColor}
                       onPress={async () => {
                         const nextState = !isCompleted;
-                        await toggleHabit(habit.id, todayStr);
+                        
+                        // 1. Synchronously update optimistic UI state
+                        setOptimisticCompletions(prev => ({ ...prev, [habit.id]: nextState }));
+                        
+                        // 2. Fire database update in background (non-blocking)
+                        toggleHabit(habit.id, todayStr);
                         
                         if (nextState) {
                           const totalScheduled = todayHabits.length;
                           const nextCompletedCount = todayHabits.filter(h => {
                             if (h.id === habit.id) return true;
-                            const ent = history.find(e => e.habitId === h.id && e.date === todayStr);
-                            return ent ? ent.completed : false;
+                            return !!optimisticCompletions[h.id];
                           }).length;
                           
                           if (nextCompletedCount === totalScheduled) {
                             const todayAlreadyCompleted = todayHabits.every(h => {
                               if (h.id === habit.id) return false;
-                              const ent = history.find(e => e.habitId === h.id && e.date === todayStr);
-                              return ent ? ent.completed : false;
+                              return !!optimisticCompletions[h.id];
                             });
                             
                             let nextStreak = overallStreak;
@@ -705,7 +745,7 @@ const styles = StyleSheet.create({
   // Floating FAB styles
   floatingFab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 108,
     right: 24,
     width: 56,
     height: 56,
@@ -726,3 +766,5 @@ const styles = StyleSheet.create({
     })
   },
 });
+
+export const HomeScreen = React.memo(HomeScreenComponent);
