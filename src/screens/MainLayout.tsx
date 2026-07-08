@@ -42,7 +42,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ onSignOut }) => {
       {/* Main Content Area */}
       <View style={tw`flex-1`}>
         <View style={{ flex: 1, display: activeTab === 'home' ? 'flex' : 'none' }}>
-          <HomeScreen />
+          <HomeScreen onNavigateToStats={() => setActiveTab('stats')} />
         </View>
         <View style={{ flex: 1, display: activeTab === 'calendar' ? 'flex' : 'none' }}>
           <CalendarScreen />

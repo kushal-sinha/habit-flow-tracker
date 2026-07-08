@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useUser } from '@clerk/clerk-expo';
+import { AppState } from 'react-native';
 import { Habit, HistoryEntry, UserSettings, StreakStats } from '../types';
 import { 
   initDatabase, 
@@ -16,6 +17,9 @@ import {
 } from '../db/sqlite';
 import { getTodayString, addDays, differenceInCalendarDays } from '../utils/dateUtils';
 import { isHabitScheduled, calculateHabitStats, calculateOverallStreak } from '../utils/streakUtils';
+import { getLogicalResetDate } from '../utils/TimeWindowCalculator';
+import { evaluateDailyResets } from '../utils/DailyResetManager';
+import { scheduleReminders, triggerCompletionNotification } from '../services/ReminderScheduler';
 
 interface HabitsContextType {
   habits: Habit[];
@@ -57,11 +61,70 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     userName: user?.firstName || 'Kushal',
     soundEnabled: true,
     hapticEnabled: true,
+    dailyResetTime: '00:00',
+    streakShields: 0,
+    lastDailyResetDate: null,
+    showStreakLostScreen: false,
+    streakShieldProtectedStreak: 0,
   });
   const [todayStr, setTodayStr] = useState<string>(getTodayString());
   const [loading, setLoading] = useState<boolean>(true);
-  
-  const midnightInterval = useRef<any>(null);
+
+  // Run Catch Up Daily Reset Check
+  const runDailyResetCheck = async (
+    currentSettings: UserSettings,
+    currentHabits: Habit[]
+  ): Promise<{ settings: UserSettings; history: HistoryEntry[] }> => {
+    const rawHistory = await dbGetHistory(userId);
+    const result = evaluateDailyResets(currentSettings, currentHabits, rawHistory, new Date());
+    
+    if (result.changesApplied) {
+      await dbSaveUserSettings(result.updatedSettings);
+      
+      if (result.insertedHistory.length > 0) {
+        const db = getDB();
+        await db.withTransactionAsync(async () => {
+          const stmt = await db.prepareAsync(
+            'INSERT INTO history_entries (habitId, date, completed, completedAt, userId) VALUES (?, ?, 1, ?, ?)'
+          );
+          try {
+            for (const entry of result.insertedHistory) {
+              await stmt.executeAsync([entry.habitId, entry.date, entry.completedAt, userId]);
+            }
+          } finally {
+            await stmt.finalizeAsync();
+          }
+        });
+      }
+      
+      const finalHistory = await dbGetHistory(userId);
+      return { settings: result.updatedSettings, history: finalHistory };
+    }
+    
+    return { settings: currentSettings, history: rawHistory };
+  };
+
+  const loadAndSyncData = async () => {
+    // 1. Get user settings
+    const loadedSettings = await dbGetUserSettings(userId, user?.firstName || 'Kushal');
+    
+    // 2. Get habits
+    const loadedHabits = await dbGetHabits(userId);
+    
+    // 3. Run resets
+    const resetResult = await runDailyResetCheck(loadedSettings, loadedHabits);
+    
+    // Set states
+    setSettings(resetResult.settings);
+    setHabits(loadedHabits);
+    
+    // 4. Run catch-up to ensure historical integrity for streaks
+    const updatedHistory = await runCatchUp(loadedHabits);
+    setHistory(updatedHistory);
+
+    // 5. Sync notification reminders in the background
+    await scheduleReminders(resetResult.settings, loadedHabits, updatedHistory);
+  };
 
   // Load database and sync state on mount/user change
   useEffect(() => {
@@ -79,21 +142,35 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     bootstrap();
     
-    // Set up midnight checker to refresh todayStr when the clock crosses midnight
-    midnightInterval.current = setInterval(() => {
-      const currentToday = getTodayString();
-      if (currentToday !== todayStr) {
-        setTodayStr(currentToday);
-        loadAndSyncData(); // reload statistics and schedules for the new day
+    // Listen for AppState changes to trigger catch-up reset checks when app foregrounds
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active') {
+        try {
+          await loadAndSyncData();
+        } catch (err) {
+          console.error('Error syncing on foreground: ', err);
+        }
       }
-    }, 10000); // check every 10 seconds (highly lightweight)
+    });
     
     return () => {
-      if (midnightInterval.current) {
-        clearInterval(midnightInterval.current);
-      }
+      subscription.remove();
     };
-  }, [userId, todayStr]);
+  }, [userId]);
+
+  // Periodic interval checker that executes daily reset checks when logical reset boundary is crossed
+  useEffect(() => {
+    if (loading || !settings.lastDailyResetDate) return;
+    
+    const interval = setInterval(async () => {
+      const currentLogicalDate = getLogicalResetDate(new Date(), settings.dailyResetTime);
+      if (currentLogicalDate !== settings.lastDailyResetDate) {
+        await loadAndSyncData();
+      }
+    }, 10000); // 10s check
+    
+    return () => clearInterval(interval);
+  }, [loading, settings.dailyResetTime, settings.lastDailyResetDate]);
 
   // Bulk catch-up routine: inserts skip markers (completed = 0) for past scheduled days that were ignored
   const runCatchUp = async (habitsList: Habit[]): Promise<HistoryEntry[]> => {
@@ -151,19 +228,6 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return dbGetHistory(userId);
   };
 
-  const loadAndSyncData = async () => {
-    // 1. Get user settings
-    const loadedSettings = await dbGetUserSettings(userId, user?.firstName || 'Kushal');
-    setSettings(loadedSettings);
-    
-    // 2. Get habits
-    const loadedHabits = await dbGetHabits(userId);
-    setHabits(loadedHabits);
-    
-    // 3. Run catch-up to ensure historical integrity for streaks
-    const updatedHistory = await runCatchUp(loadedHabits);
-    setHistory(updatedHistory);
-  };
 
   const refreshData = async () => {
     try {
@@ -293,22 +357,38 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const currentlyCompleted = entry ? entry.completed : false;
     const nextCompletedState = !currentlyCompleted;
     
+    // Construct optimistic history for immediate trigger planning
+    const filteredHistory = history.filter(e => !(e.habitId === habitId && e.date === date));
+    const nextHistory = nextCompletedState
+      ? [
+          ...filteredHistory,
+          { habitId, date, completed: true, completedAt: new Date().toISOString(), userId }
+        ]
+      : filteredHistory;
+
     try {
       await dbToggleCompletion(habitId, date, userId, nextCompletedState);
       
       // Fast optimistic update
-      setHistory(prev => {
-        const filtered = prev.filter(e => !(e.habitId === habitId && e.date === date));
-        if (nextCompletedState) {
-          return [
-            ...filtered,
-            { habitId, date, completed: true, completedAt: new Date().toISOString(), userId }
-          ];
-        }
-        return filtered;
-      });
+      setHistory(nextHistory);
       
-      // Sync from DB in the background
+      // Trigger dynamic scheduling
+      await scheduleReminders(settings, habits, nextHistory);
+      
+      // Trigger a local celebratory banner if goal is completed
+      const activeHabits = habits.filter(h => !h.isArchived);
+      const logicalToday = getLogicalResetDate(new Date(), settings.dailyResetTime);
+      const todayScheduled = activeHabits.filter(h => isHabitScheduled(h, logicalToday));
+      
+      if (nextCompletedState && todayScheduled.length > 0) {
+        const todayCompletions = nextHistory.filter(e => e.date === logicalToday && e.completed && e.userId === userId);
+        const completedSet = new Set(todayCompletions.map(c => c.habitId));
+        const allDone = todayScheduled.every(h => completedSet.has(h.id));
+        if (allDone) {
+          await triggerCompletionNotification();
+        }
+      }
+
       refreshData();
     } catch (err) {
       console.error('Error toggling habit: ', err);
@@ -320,6 +400,8 @@ export const HabitsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSettings(updated);
     try {
       await dbSaveUserSettings(updated);
+      // Sync notifications on settings changes (e.g. enabling notifications or changing reset time)
+      await scheduleReminders(updated, habits, history);
     } catch (err) {
       console.error('Error saving settings: ', err);
     }

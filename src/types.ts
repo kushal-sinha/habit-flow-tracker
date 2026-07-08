@@ -30,6 +30,11 @@ export interface UserSettings {
   userName: string;
   soundEnabled: boolean;
   hapticEnabled: boolean;
+  dailyResetTime: string; // "HH:MM" format (default "00:00")
+  streakShields: number; // 0 to 3 (max 3)
+  lastDailyResetDate: string | null; // "YYYY-MM-DD"
+  showStreakLostScreen: boolean;
+  streakShieldProtectedStreak: number; // > 0 triggers shield protection modal
 }
 
 export interface Quote {

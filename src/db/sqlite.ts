@@ -55,7 +55,12 @@ export async function initDatabase(): Promise<void> {
       notificationMessage TEXT DEFAULT 'Don''t forget today''s habits 🌱',
       userName TEXT DEFAULT 'User',
       soundEnabled INTEGER DEFAULT 1,
-      hapticEnabled INTEGER DEFAULT 1
+      hapticEnabled INTEGER DEFAULT 1,
+      dailyResetTime TEXT DEFAULT '00:00',
+      streakShields INTEGER DEFAULT 0,
+      lastDailyResetDate TEXT DEFAULT NULL,
+      showStreakLostScreen INTEGER DEFAULT 0,
+      streakShieldProtectedStreak INTEGER DEFAULT 0
     );
   `);
 
@@ -65,6 +70,21 @@ export async function initDatabase(): Promise<void> {
   } catch {}
   try {
     await db.execAsync('ALTER TABLE user_settings ADD COLUMN hapticEnabled INTEGER DEFAULT 1;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN dailyResetTime TEXT DEFAULT \'00:00\';');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN streakShields INTEGER DEFAULT 0;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN lastDailyResetDate TEXT DEFAULT NULL;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN showStreakLostScreen INTEGER DEFAULT 0;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE user_settings ADD COLUMN streakShieldProtectedStreak INTEGER DEFAULT 0;');
   } catch {}
 
   // Create indexes for performance on larger datasets
@@ -193,6 +213,11 @@ export async function dbGetUserSettings(userId: string, defaultName: string = 'K
       userName: defaultName,
       soundEnabled: true,
       hapticEnabled: true,
+      dailyResetTime: '00:00',
+      streakShields: 0,
+      lastDailyResetDate: null,
+      showStreakLostScreen: false,
+      streakShieldProtectedStreak: 0,
     };
     await dbSaveUserSettings(defaultSettings);
     return defaultSettings;
@@ -207,6 +232,11 @@ export async function dbGetUserSettings(userId: string, defaultName: string = 'K
     userName: row.userName,
     soundEnabled: row.soundEnabled !== 0,
     hapticEnabled: row.hapticEnabled !== 0,
+    dailyResetTime: row.dailyResetTime ?? '00:00',
+    streakShields: row.streakShields ?? 0,
+    lastDailyResetDate: row.lastDailyResetDate ?? null,
+    showStreakLostScreen: row.showStreakLostScreen === 1,
+    streakShieldProtectedStreak: row.streakShieldProtectedStreak ?? 0,
   };
 }
 
@@ -215,11 +245,14 @@ export async function dbSaveUserSettings(settings: UserSettings): Promise<void> 
   const notifVal = settings.notificationsEnabled ? 1 : 0;
   const soundVal = settings.soundEnabled ? 1 : 0;
   const hapticVal = settings.hapticEnabled ? 1 : 0;
+  const showLostVal = settings.showStreakLostScreen ? 1 : 0;
   
   await db.runAsync(
     `INSERT OR REPLACE INTO user_settings (
-       userId, theme, notificationsEnabled, notificationTime, notificationMessage, userName, soundEnabled, hapticEnabled
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       userId, theme, notificationsEnabled, notificationTime, notificationMessage, 
+       userName, soundEnabled, hapticEnabled, dailyResetTime, streakShields, 
+       lastDailyResetDate, showStreakLostScreen, streakShieldProtectedStreak
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       settings.userId,
       settings.theme,
@@ -229,6 +262,11 @@ export async function dbSaveUserSettings(settings: UserSettings): Promise<void> 
       settings.userName,
       soundVal,
       hapticVal,
+      settings.dailyResetTime,
+      settings.streakShields,
+      settings.lastDailyResetDate,
+      showLostVal,
+      settings.streakShieldProtectedStreak,
     ]
   );
 }

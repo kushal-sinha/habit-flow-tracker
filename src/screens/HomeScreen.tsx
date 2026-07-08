@@ -11,11 +11,14 @@ import { Habit } from '../types';
 import { HabitFormModal } from './HabitFormModal';
 import { MascotIllustration } from '../components/MascotIllustration';
 import { MascotCompanionCard } from '../components/MascotCompanionCard';
-import { StreakWarningDialog } from '../components/StreakWarningDialog';
 import { LevelTimeline } from '../components/LevelTimeline';
 import { LevelBadge } from '../components/LevelTimeline';
 import { CircularProgress } from '../components/CircularProgress';
 import { MILESTONES, MilestoneConfig } from '../utils/progressionUtils';
+import { StatusCard } from '../components/StatusCard';
+import { UndoSnackbar } from '../components/UndoSnackbar';
+import { StreakShieldModal } from '../components/StreakShieldModal';
+import { StreakLostModal } from '../components/StreakLostModal';
 
 // Helper to determine active milestone info based on streak count
 const getActiveMilestone = (streak: number): MilestoneConfig => {
@@ -79,7 +82,11 @@ const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ isChecked, onPress, col
 // ----------------------------------------------------
 // Main HomeScreen Component
 // ----------------------------------------------------
-const HomeScreenComponent: React.FC = () => {
+interface HomeScreenProps {
+  onNavigateToStats?: () => void;
+}
+
+const HomeScreenComponent: React.FC<HomeScreenProps> = ({ onNavigateToStats }) => {
   const { 
     loading,
     habits, 
@@ -91,7 +98,8 @@ const HomeScreenComponent: React.FC = () => {
     archiveHabit,
     addHabit,
     editHabit,
-    settings
+    settings,
+    updateSettings
   } = useHabits();
 
   const { triggerCelebration } = useCelebration();
@@ -120,9 +128,10 @@ const HomeScreenComponent: React.FC = () => {
     return () => clearTimeout(handler);
   }, [history, todayStr, habits]);
 
-  // Streak warning state
-  const [warningVisible, setWarningVisible] = useState(false);
-  const [warningShownToday, setWarningShownToday] = useState(false);
+  // V2.1 Streak Protection States
+  const [undoSnackbarVisible, setUndoSnackbarVisible] = useState(false);
+  const [shieldModalVisible, setShieldModalVisible] = useState(false);
+  const [lostModalVisible, setLostModalVisible] = useState(false);
 
   // Animations driving variables
   const circleProgressAnim = useRef(new Animated.Value(0)).current;
@@ -168,18 +177,16 @@ const HomeScreenComponent: React.FC = () => {
 
   console.log('[DEBUG-PROGRESS] overallStreak:', overallStreak, 'optimisticStreak:', optimisticStreak, 'levelPct:', levelProgressPercentage, 'todayPct:', todayPercentage, 'total:', totalCount, 'completed:', completedCount, 'historyLen:', history.length);
 
-  // Check if streak warning should trigger today
+  // Check for daily reset popups (Streak Shield Protected or Streak Lost) on load
   useEffect(() => {
-    if (!loading && habits.length > 0 && overallStreak > 0 && !warningShownToday) {
-      if (todayHabits.length > 0) {
-        const isRoutineIncomplete = completedCount < totalCount;
-        if (isRoutineIncomplete) {
-          setWarningVisible(true);
-          setWarningShownToday(true);
-        }
+    if (!loading && settings) {
+      if (settings.streakShieldProtectedStreak > 0) {
+        setShieldModalVisible(true);
+      } else if (settings.showStreakLostScreen) {
+        setLostModalVisible(true);
       }
     }
-  }, [loading, habits, history, overallStreak, todayStr, warningShownToday, completedCount, totalCount]);
+  }, [loading, settings.streakShieldProtectedStreak, settings.showStreakLostScreen]);
 
   // Spring drive level progress ring & bars
   useEffect(() => {
@@ -284,6 +291,9 @@ const HomeScreenComponent: React.FC = () => {
         </View>
 
         <ScrollView contentContainerStyle={tw`px-5 pb-36 pt-2`}>
+          
+          {/* V2.1 Status Card */}
+          <StatusCard habits={habits} history={history} settings={settings} />
           
           {/* ====================================================
               CIRCULAR PROGRESS RING & LEVEL BADGE SECTION
@@ -392,6 +402,11 @@ const HomeScreenComponent: React.FC = () => {
                         
                         // 2. Fire database update in background (non-blocking)
                         toggleHabit(habit.id, todayStr);
+                        
+                        // 3. Show undo snackbar if unchecking a completed habit
+                        if (!nextState) {
+                          setUndoSnackbarVisible(true);
+                        }
                         
                         if (nextState) {
                           const totalScheduled = todayHabits.length;
@@ -536,11 +551,35 @@ const HomeScreenComponent: React.FC = () => {
           )}
         </Portal>
 
-        {/* Streak Warning Overlay Modal */}
-        <StreakWarningDialog
-          visible={warningVisible}
-          streakCount={overallStreak}
-          onDismiss={() => setWarningVisible(false)}
+        {/* V2.1 Streak Protection & Undo Overlays */}
+        <StreakShieldModal
+          visible={shieldModalVisible}
+          streakCount={settings.streakShieldProtectedStreak}
+          onDismiss={async () => {
+            setShieldModalVisible(false);
+            await updateSettings({ streakShieldProtectedStreak: 0 });
+          }}
+        />
+
+        <StreakLostModal
+          visible={lostModalVisible}
+          onDismiss={async () => {
+            setLostModalVisible(false);
+            await updateSettings({ showStreakLostScreen: false });
+          }}
+          onViewStats={async () => {
+            setLostModalVisible(false);
+            await updateSettings({ showStreakLostScreen: false });
+            if (onNavigateToStats) {
+              onNavigateToStats();
+            }
+          }}
+        />
+
+        <UndoSnackbar
+          visible={undoSnackbarVisible}
+          resetTime={settings.dailyResetTime}
+          onDismiss={() => setUndoSnackbarVisible(false)}
         />
       </View>
   );
